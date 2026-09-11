@@ -3,6 +3,8 @@ from __future__ import annotations
 import html
 import io
 import os
+import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import streamlit as st
@@ -25,11 +27,15 @@ from stylemate.runtime import (
     safe_connection_error,
     image_generation_mode,
     verify_api_key,
+    verify_image_endpoint,
 )
+from stylemate.operations import GATE
+from stylemate.security import protect_provider_logs
 from stylemate.styles import APP_CSS
 
 
 load_dotenv()
+protect_provider_logs()
 st.set_page_config(page_title="StyleMate · AI 穿搭助手", page_icon="✦", layout="wide")
 st.markdown(APP_CSS, unsafe_allow_html=True)
 
@@ -46,6 +52,12 @@ def init_state() -> None:
         "stage": "input" if environment_key else "api",
         "api_key": environment_key,
         "api_source": "environment" if environment_key else "",
+        "api_image_key": "",
+        "image_enabled": True,
+        "session_id": uuid.uuid4().hex,
+        "image_tasks": {},
+        "image_errors": {},
+        "batch_config": None,
         "api_base_url": os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL),
         "api_image_base_url": os.getenv("OPENAI_IMAGE_BASE_URL", ""),
         "api_text_model": os.getenv("OPENAI_TEXT_MODEL", DEFAULT_TEXT_MODEL),
@@ -92,14 +104,14 @@ def header(show_reset: bool = False, show_api_settings: bool = True) -> None:
             status_col, api_col = st.columns([1.25, 1])
             with status_col:
                 provider = provider_display_name(st.session_state.api_base_url)
-                status = f"{provider} 已连接" if key_ready else "Demo 模式"
+                status = f"{provider} 已配置" if key_ready else "Demo 模式"
                 st.markdown(f'<div class="api-state"><strong>✦</strong> {status}</div>', unsafe_allow_html=True)
             with api_col:
                 if st.button("⚙ API 设置", width="stretch"):
                     st.session_state.stage = "api"
                     st.rerun()
         else:
-            status = "API 已连接" if key_ready else "需要配置 API Key"
+            status = "API 已配置" if key_ready else "需要配置 API Key"
             st.markdown(f'<div class="api-state"><strong>✦</strong> {status}</div>', unsafe_allow_html=True)
     st.markdown('<div style="border-bottom:1px solid #dfe2e8;margin:.85rem 0 1.7rem"></div>', unsafe_allow_html=True)
 
@@ -110,7 +122,62 @@ def safe_image(data: bytes | Path) -> Image.Image:
     return Image.open(io.BytesIO(data))
 
 
+def current_config() -> APIConfig:
+    return APIConfig.from_values(
+        api_key=st.session_state.api_key,
+        base_url=st.session_state.api_base_url,
+        image_base_url=st.session_state.api_image_base_url,
+        image_api_key=st.session_state.api_image_key,
+        text_model=st.session_state.api_text_model,
+        image_model=st.session_state.api_image_model,
+        text_api=st.session_state.api_text_api,
+    )
+
+
+@contextmanager
+def service(config):
+    ai = StyleMateAI(api_key=config.api_key, base_url=config.base_url,
+                     image_base_url=config.image_base_url, image_api_key=config.image_api_key,
+                     text_model=config.text_model, image_model=config.image_model,
+                     text_api=config.text_api)
+    try:
+        yield ai
+    finally:
+        ai.close()
+
+
+def generate_one(ai, outfit):
+    state = st.session_state.image_tasks.setdefault(outfit.id, {})
+    progress = st.empty()
+    labels = {"submitting": "正在提交", "queued": "排队中", "pending": "排队中",
+              "running": "生成中", "processing": "生成中", "in_progress": "生成中",
+              "downloading": "下载中", "completed": "完成", "timeout": "等待超时",
+              "query_error": "查询暂时失败", "unknown": "提交结果待确认"}
+    try:
+        result = ai.generate_outfit_image(
+            st.session_state.source_image, st.session_state.source_mime,
+            st.session_state.garment, outfit, task_state=state,
+            on_progress=lambda item: progress.caption(labels.get(item["status"], "任务结束")),
+        )
+        st.session_state.result_images[outfit.id] = result
+        state["status"] = "completed"
+        st.session_state.image_errors.pop(outfit.id, None)
+    except Exception as exc:
+        st.session_state.image_errors[outfit.id] = safe_connection_error(exc)
+        if not state.get("status"):
+            state["status"] = "unknown"
+
+
 def run_generation(uploaded_file, occasion: str, preferred_style: str, generate_images: bool) -> None:
+    keys = [st.session_state.api_key]
+    if generate_images:
+        keys.append(st.session_state.api_image_key or st.session_state.api_key)
+    with GATE.claim(st.session_state.session_id, *keys):
+        _run_generation(uploaded_file, occasion, preferred_style, generate_images)
+    st.rerun()
+
+
+def _run_generation(uploaded_file, occasion: str, preferred_style: str, generate_images: bool) -> None:
     mode = decide_run_mode(
         has_upload=uploaded_file is not None,
         api_key=st.session_state.api_key,
@@ -121,46 +188,30 @@ def run_generation(uploaded_file, occasion: str, preferred_style: str, generate_
 
     source = uploaded_file.getvalue()
     source_mime = uploaded_file.type
-    ai = StyleMateAI(
-        api_key=st.session_state.api_key,
-        base_url=st.session_state.api_base_url,
-        image_base_url=st.session_state.api_image_base_url,
-        text_model=st.session_state.api_text_model,
-        image_model=st.session_state.api_image_model,
-        text_api=st.session_state.api_text_api,
-    )
-    with st.status("正在理解你的单品…", expanded=True) as status:
+    config = current_config()
+    with service(config) as ai, st.status("正在理解你的单品…", expanded=True) as status:
         garment = ai.analyze_garment(source, source_mime)
         st.write(f"识别完成：{garment.display_name}")
         status.update(label="正在规划候选搭配…")
         plan = ai.plan_outfits(garment, occasion, preferred_style)
+        plan = OutfitPlan(outfits=rank_outfits(plan.outfits, preferred_style))
         images: dict[str, bytes] = {}
+        # Persist text and each task before making the next potentially failing call.
+        st.session_state.update(stage="results", garment=garment, plan=plan,
+            result_images=images, source_image=source, source_mime=source_mime,
+            occasion=occasion, preferred_style=preferred_style, recognition_demo=False,
+            result_images_demo=not generate_images, image_tasks={}, image_errors={},
+            batch_config=config)
         if generate_images:
             for index, outfit in enumerate(plan.outfits, start=1):
                 status.update(label=f"正在生成效果图 {index}/3…")
-                images[outfit.id] = ai.generate_outfit_image(
-                    source, source_mime, garment, outfit
-                )
+                generate_one(ai, outfit)
         else:
             for index, outfit in enumerate(plan.outfits):
                 fallback = list(DEMO_IMAGES.values())[index]
                 images[outfit.id] = fallback.read_bytes()
-        status.update(label="三套搭配已完成", state="complete")
-
-    plan = OutfitPlan(outfits=rank_outfits(plan.outfits, preferred_style))
-    st.session_state.update(
-        stage="results",
-        garment=garment,
-        plan=plan,
-        result_images=images,
-        source_image=source,
-        source_mime=source_mime,
-        occasion=occasion,
-        preferred_style=preferred_style,
-        recognition_demo=False,
-        result_images_demo=not generate_images,
-    )
-    st.rerun()
+                st.session_state.result_images[outfit.id] = images[outfit.id]
+        status.update(label="搭配已保存；未完成的图片可在结果页单独处理", state="complete")
 
 
 def run_demo(occasion: str, preferred_style: str) -> None:
@@ -179,6 +230,7 @@ def run_demo(occasion: str, preferred_style: str) -> None:
         preferred_style=preferred_style,
         recognition_demo=True,
         result_images_demo=True,
+        image_tasks={}, image_errors={}, batch_config=None,
     )
     st.rerun()
 
@@ -204,6 +256,7 @@ def render_api_setup() -> None:
             type="password",
             placeholder="输入中转站提供的 Key",
             help="留空时保留当前会话已经配置的 Key。",
+            key="text_key_input",
         )
         base_url_input = st.text_input(
             "API Base URL",
@@ -220,6 +273,11 @@ def render_api_setup() -> None:
                 "留空时自动复用上面的 API Base URL。"
             ),
         )
+        separate_image_key = st.checkbox("生图使用独立 Key", value=bool(st.session_state.api_image_key))
+        image_key_input = st.text_input("生图 API Key", type="password", disabled=not separate_image_key,
+                                       key="image_key_input",
+                                       help="不勾选时复用文本 Key；勾选后留空保留已保存的生图 Key。")
+        image_enabled = st.checkbox("启用生图功能", value=st.session_state.image_enabled)
         if provider_display_name(base_url_input) == "RightAPI":
             st.info(
                 "已识别 RightAPI：保存时会自动使用文本渠道地址 "
@@ -253,37 +311,65 @@ def render_api_setup() -> None:
                     else "Chat Completions（兼容性更广）"
                 ),
             )
-        verify_connection = st.checkbox(
-            "保存前调用 /models 验证连接",
-            value=True,
-            help="若中转站没有实现 /models，可取消勾选，保存后用实际识别请求测试。",
-        )
+        st.caption("文本测试会发送一次小请求，可能计费；生图检查仅检查模型列表，不创建图片任务。")
+        def draft_config(target=None):
+            image_key = (normalize_api_key(image_key_input) or st.session_state.api_image_key) if separate_image_key else ""
+            text_key = normalize_api_key(api_key_input) or st.session_state.api_key
+            if target == "text":
+                return APIConfig.from_values(api_key=text_key, base_url=base_url_input,
+                    text_model=text_model_input, image_model=DEFAULT_IMAGE_MODEL, text_api=text_api_input)
+            if separate_image_key and not image_key and image_enabled:
+                raise ValueError("请填写生图 Key。")
+            if target == "image":
+                return APIConfig.from_values(api_key=image_key or text_key,
+                    base_url=image_base_url_input or base_url_input,
+                    text_model=DEFAULT_TEXT_MODEL, image_model=image_model_input, text_api="responses")
+            return APIConfig.from_values(
+                api_key=text_key,
+                base_url=base_url_input, image_base_url=image_base_url_input if image_enabled else "",
+                image_api_key=image_key, text_model=text_model_input,
+                image_model=image_model_input if image_enabled else DEFAULT_IMAGE_MODEL, text_api=text_api_input)
+        test_text, test_image = st.columns(2)
+        with test_text:
+            if st.button("测试文本接口", width="stretch"):
+                try:
+                    config = draft_config("text")
+                    with GATE.claim(st.session_state.session_id, config.api_key):
+                        verify_api_key(config.api_key, base_url=config.base_url,
+                                       text_model=config.text_model, text_api=config.text_api)
+                    st.success("文本测试成功；图片识别能力将在上传后验证。")
+                except Exception as exc:
+                    st.error(safe_connection_error(exc))
+        with test_image:
+            if st.button("检查生图接口", disabled=not image_enabled, width="stretch"):
+                try:
+                    config = draft_config("image")
+                    with GATE.claim(st.session_state.session_id, config.image_api_key):
+                        st.info(verify_image_endpoint(config))
+                except Exception as exc:
+                    st.error("生图检查失败（可关闭生图继续使用文本）：" + safe_connection_error(exc))
+        verify_connection = st.checkbox("保存前测试文本接口（可能产生少量费用）", value=False)
         if st.button("保存并开始使用", type="primary", width="stretch"):
-            key = normalize_api_key(api_key_input) or st.session_state.api_key
             try:
-                config = APIConfig.from_values(
-                    api_key=key,
-                    base_url=base_url_input,
-                    image_base_url=image_base_url_input,
-                    text_model=text_model_input,
-                    image_model=image_model_input,
-                    text_api=text_api_input,
-                )
+                config = draft_config()
                 if verify_connection:
-                    with st.spinner("正在验证连接…"):
+                    with GATE.claim(st.session_state.session_id, config.api_key), st.spinner("正在验证连接…"):
                         verify_api_key(
                             config.api_key,
                             base_url=config.base_url,
                             text_model=config.text_model,
+                            text_api=config.text_api,
                         )
             except ValueError as exc:
-                st.error(str(exc))
+                st.error(safe_connection_error(exc))
             except Exception as exc:
                 st.error(safe_connection_error(exc))
             else:
                 st.session_state.api_key = config.api_key
                 st.session_state.api_base_url = config.base_url
                 st.session_state.api_image_base_url = config.image_base_url
+                st.session_state.api_image_key = config.image_api_key if separate_image_key else ""
+                st.session_state.image_enabled = image_enabled
                 st.session_state.api_text_model = config.text_model
                 st.session_state.api_image_model = config.image_model
                 st.session_state.api_text_api = config.text_api
@@ -300,11 +386,19 @@ def render_api_setup() -> None:
             if st.button("返回应用", width="stretch"):
                 st.session_state.stage = "input"
                 st.rerun()
-            if st.button("清除当前会话 Key", width="stretch"):
+            def clear_keys():
                 st.session_state.api_key = ""
+                st.session_state.api_image_key = ""
+                st.session_state.batch_config = None
+                st.session_state.image_tasks = {}
+                st.session_state.image_errors = {}
+                st.session_state.plan = None
+                st.session_state.text_key_input = ""
+                st.session_state.image_key_input = ""
                 st.session_state.api_source = ""
                 st.session_state.demo_access = False
-                st.rerun()
+                st.session_state.stage = "api"
+            st.button("清除当前会话 Key", width="stretch", on_click=clear_keys)
         else:
             if st.button("暂不配置，仅查看固定 Demo", width="stretch"):
                 st.session_state.demo_access = True
@@ -350,20 +444,17 @@ def render_input() -> None:
                 if image_mode == "rightapi_async"
                 else "开启后会额外调用 3 次图像编辑 API；关闭时使用内置示意图。"
             ),
-            disabled=not has_key,
+            disabled=not has_key or not st.session_state.image_enabled,
         )
         button_label = "✦ 生成我的穿搭" if has_key else "✦ 查看固定 Demo"
         if st.button(button_label, type="primary", width="stretch"):
             try:
                 if has_key:
-                    run_generation(uploaded, occasion, preferred_style, generate_images)
+                    run_generation(uploaded, occasion, preferred_style, generate_images and st.session_state.image_enabled)
                 else:
                     run_demo(occasion, preferred_style)
             except Exception as exc:  # API failures should stay visible and recoverable in UI.
-                if globals().get("PUBLIC_DEPLOYMENT", False):
-                    st.error(f"生成失败：{safe_connection_error(exc)}")
-                else:
-                    st.error(f"生成失败：{exc}")
+                st.error(f"生成失败：{safe_connection_error(exc)}")
         if not has_key:
             note = "固定 Demo 不会读取你上传的图片；请进入 API 设置后再识别自己的单品。"
         elif image_mode == "rightapi_async":
@@ -434,10 +525,29 @@ def render_results() -> None:
                 """,
                 unsafe_allow_html=True,
             )
-            st.image(
-                safe_image(st.session_state.result_images[outfit.id]),
-                width="stretch",
-            )
+            result = st.session_state.result_images.get(outfit.id)
+            if result:
+                st.image(safe_image(result), width="stretch")
+            elif not st.session_state.recognition_demo:
+                task = st.session_state.image_tasks.get(outfit.id, {})
+                st.warning(st.session_state.image_errors.get(outfit.id, "图片尚未完成。"))
+                task_id = task.get("task_id")
+                if task_id:
+                    st.caption(f"任务编号：{task_id}")
+                terminal = task.get("status") in {"failed", "cancelled", "canceled", "error"}
+                needs_new = terminal or (not task_id and task.get("status") in {"unknown", "submitting"})
+                confirmed = not needs_new or st.checkbox("确认重新提交这张图（可能再次计费；请先核对服务商后台）", key=f"confirm-{outfit.id}")
+                label = "继续查询这张图" if task_id and not terminal else "重试这张图"
+                if st.button(label, key=f"retry-image-{outfit.id}", disabled=not confirmed):
+                    try:
+                        config = st.session_state.batch_config
+                        with GATE.claim(st.session_state.session_id, config.image_api_key), service(config) as ai:
+                            if needs_new:
+                                st.session_state.image_tasks[outfit.id] = {}
+                            generate_one(ai, outfit)
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(safe_connection_error(exc))
             if st.session_state.result_images_demo:
                 st.markdown('<div class="look-image-label">示意效果图</div>', unsafe_allow_html=True)
             pieces = "".join(f"<li>{html.escape(piece)}</li>" for piece in outfit.pieces)
