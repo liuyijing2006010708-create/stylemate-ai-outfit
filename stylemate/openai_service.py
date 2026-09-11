@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from .models import GarmentAnalysis, Outfit, OutfitPlan
 from .rightapi_images import RightAPIImageClient
+from .security import secure_http_client, protect_provider_logs
 from .runtime import (
     APIConfig,
     DEFAULT_BASE_URL,
@@ -29,6 +30,7 @@ class StyleMateAI:
         *,
         base_url: str | None = None,
         image_base_url: str | None = None,
+        image_api_key: str | None = None,
         text_model: str | None = None,
         image_model: str | None = None,
         text_api: str | None = None,
@@ -39,24 +41,28 @@ class StyleMateAI:
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
             base_url=base_url or os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL),
             image_base_url=image_base_url or os.getenv("OPENAI_IMAGE_BASE_URL", ""),
+            image_api_key=image_api_key,
             text_model=text_model or os.getenv("OPENAI_TEXT_MODEL", DEFAULT_TEXT_MODEL),
             image_model=image_model or os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
             text_api=text_api or os.getenv("OPENAI_TEXT_API", "responses"),
         )
+        protect_provider_logs()
         self.client = client_factory(
             api_key=config.api_key,
             base_url=config.base_url,
             timeout=180.0,
             max_retries=0,
+            **({"http_client": secure_http_client(timeout=180.0)} if client_factory is OpenAI else {}),
         )
         self.image_client = (
             client_factory(
-                api_key=config.api_key,
+                api_key=config.image_api_key,
                 base_url=config.image_base_url,
                 timeout=180.0,
                 max_retries=0,
+                **({"http_client": secure_http_client(timeout=180.0)} if client_factory is OpenAI else {}),
             )
-            if config.image_base_url != config.base_url
+            if config.image_base_url != config.base_url or config.image_api_key != config.api_key
             else self.client
         )
         self.text_model = config.text_model
@@ -64,10 +70,15 @@ class StyleMateAI:
         self.text_api = config.text_api
         self.image_generation_mode = image_generation_mode(config.image_base_url)
         self.rightapi_images = (
-            rightapi_image_factory(api_key=config.api_key, model=config.image_model)
+            rightapi_image_factory(api_key=config.image_api_key, model=config.image_model)
             if self.image_generation_mode == "rightapi_async"
             else None
         )
+
+    def close(self):
+        self.client.close()
+        if self.image_client is not self.client:
+            self.image_client.close()
 
     @staticmethod
     def _data_url(image_bytes: bytes, mime_type: str) -> str:
@@ -191,6 +202,9 @@ class StyleMateAI:
         mime_type: str,
         garment: GarmentAnalysis,
         outfit: Outfit,
+        *,
+        task_state: dict | None = None,
+        on_progress: Callable | None = None,
     ) -> bytes:
         extension = mime_type.split("/")[-1].replace("jpeg", "jpg")
         image_file = io.BytesIO(image_bytes)
@@ -208,6 +222,9 @@ All pieces must be fully visible, realistically scaled, neatly separated, and ar
 an editorial but practical composition. No person, mannequin, text, logo, or watermark.
 """.strip()
         if self.rightapi_images is not None:
+            if task_state is not None:
+                return self.rightapi_images.generate(image_bytes, mime_type, prompt,
+                                                     task_state=task_state, on_progress=on_progress)
             return self.rightapi_images.generate(image_bytes, mime_type, prompt)
 
         result = self.image_client.images.edit(

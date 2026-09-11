@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
 from urllib.parse import urlsplit, urlunsplit
+from .security import UnsafeURL, validate_url, secure_http_client, protect_provider_logs
+from .operations import BusyError
 
 from openai import (
     APIConnectionError,
@@ -33,12 +35,13 @@ class RunMode(str, Enum):
 
 @dataclass(frozen=True)
 class APIConfig:
-    api_key: str
+    api_key: str = field(repr=False)
     base_url: str
     image_base_url: str
     text_model: str
     image_model: str
     text_api: str
+    image_api_key: str = field(default="", repr=False)
 
     @classmethod
     def from_values(
@@ -47,6 +50,7 @@ class APIConfig:
         api_key: str | None,
         base_url: str | None,
         image_base_url: str | None = None,
+        image_api_key: str | None = None,
         text_model: str | None,
         image_model: str | None,
         text_api: str | None,
@@ -67,6 +71,7 @@ class APIConfig:
             text_model=normalize_model_id(text_model or DEFAULT_TEXT_MODEL),
             image_model=normalize_model_id(image_model or DEFAULT_IMAGE_MODEL),
             text_api=protocol,
+            image_api_key=normalize_api_key(image_api_key) or key,
         )
 
 
@@ -83,6 +88,7 @@ def normalize_model_id(value: str) -> str:
 
 def normalize_base_url(value: str | None) -> str:
     raw = (value or DEFAULT_BASE_URL).strip()
+    validate_url(raw)
     if len(raw) > 2048:
         raise ValueError("Base URL 过长。")
     parsed = urlsplit(raw)
@@ -139,7 +145,15 @@ def image_generation_mode(base_url: str) -> str:
 def safe_connection_error(error: Exception) -> str:
     """Map provider failures to actionable messages without echoing responses."""
 
+    if isinstance(error, BusyError):
+        return "操作繁忙或过于频繁，请等待至少 10 秒后重试（每 10 分钟最多 8 次）。"
+    if isinstance(error, UnsafeURL) or isinstance(getattr(error, "__cause__", None), UnsafeURL):
+        return "地址校验失败：请使用可解析的 HTTPS 公网服务地址。"
+    if isinstance(error, TimeoutError):
+        return "等待超时；已提交的图片任务可继续查询，不会重复提交。"
     status_code = getattr(error, "status_code", None)
+    if status_code in {400, 422}:
+        return "请求不兼容：请检查模型名称、文本协议和图片接口支持情况。"
     if status_code in {401, 403}:
         return "鉴权失败：请检查 API Key 是否正确、有效并有该模型权限。"
     if status_code == 402:
@@ -177,43 +191,57 @@ def verify_api_key(
     *,
     base_url: str = DEFAULT_BASE_URL,
     text_model: str | None = None,
+    text_api: str = "responses",
     client_factory: Callable[..., Any] = OpenAI,
 ) -> None:
-    """Validate credentials with a metadata-only API request."""
+    """Test the selected text endpoint; never infer success from an HTTP error."""
 
     key = normalize_api_key(api_key)
     if not key:
         raise ValueError("API Key 不能为空。")
     normalized_base_url = normalize_base_url(base_url)
+    extra = {"http_client": secure_http_client(timeout=15.0)} if client_factory is OpenAI else {}
+    protect_provider_logs()
     client = client_factory(
         api_key=key,
         base_url=normalized_base_url,
         timeout=15.0,
         max_retries=0,
+        **extra,
     )
-
     try:
-        hostname = urlsplit(normalized_base_url).hostname or ""
-    except ValueError:
-        hostname = ""
-
-    # RightAPI / RightCode 不提供标准的 /v1/models 接口，改用轻量 chat 请求验证。
-    # 鉴权通过但模型名/协议细节不对时（400/404/422），说明网络与 Key 已打通，
-    # 不算连接失败，留待真实请求进一步确认。
-    if is_rightcode_host(hostname):
-        try:
-            client.chat.completions.create(
-                model=text_model or "gpt-5.6-luna",
-                messages=[{"role": "user", "content": "Hi"}],
-                max_tokens=1,
+        if text_api == "chat_completions":
+            result = client.chat.completions.create(
+                model=text_model or DEFAULT_TEXT_MODEL,
+                messages=[{"role": "user", "content": "Reply OK."}],
+                max_completion_tokens=32,
             )
-        except (AuthenticationError, PermissionDeniedError, APIConnectionError, APITimeoutError):
-            raise
+            if not result.choices:
+                raise RuntimeError("文本接口未返回有效结果。")
+        elif text_api == "responses":
+            result = client.responses.create(model=text_model or DEFAULT_TEXT_MODEL,
+                                             input="Reply OK.", max_output_tokens=32)
+            if not result.output:
+                raise RuntimeError("文本接口未返回有效结果。")
+        else:
+            raise ValueError("不支持的文本协议。")
+    finally:
+        if hasattr(client, "close"):
+            client.close()
+
+
+def verify_image_endpoint(config: APIConfig) -> str:
+    """Metadata is optional and is explicitly not an image generation test."""
+    if image_generation_mode(config.image_base_url) == "rightapi_async":
+        return "已识别异步协议；实际生图待验证（不创建收费任务）。"
+    with OpenAI(api_key=config.image_api_key, base_url=config.image_base_url,
+                http_client=secure_http_client(timeout=15.0), max_retries=0) as client:
+        try:
+            models = client.models.list()
         except Exception as exc:
-            # 对 400/422 等模型/协议错误做更具体的提示，避免被 safe_connection_error 吞掉
-            status_code = getattr(exc, "status_code", None)
-            if status_code in {400, 404, 422}:
-                return
+            if getattr(exc, "status_code", None) in {404, 405, 501}:
+                return "服务不支持模型列表；实际生图待验证，可保存后试用。"
             raise
-    else:
-        client.models.list()
+        if config.image_model not in {model.id for model in models.data}:
+            return "模型列表未列出所选模型；请核对名称，实际生图待验证。"
+        return "模型列表可用；图片编辑能力仍需实际生成验证。"
