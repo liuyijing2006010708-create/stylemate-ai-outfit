@@ -1,6 +1,7 @@
 """Outbound requests resolve and connect only to public addresses."""
 
 import ipaddress
+import json
 import logging
 import socket
 from urllib.parse import urlsplit
@@ -10,7 +11,9 @@ import httpx
 
 
 class UnsafeURL(ValueError):
-    pass
+    def __init__(self, message, *, reason="unsafe_url"):
+        super().__init__(message)
+        self.reason = reason
 
 
 def validate_url(url: str) -> str:
@@ -44,14 +47,64 @@ def public_address(address):
 
 
 def resolve_public(host: str, port: int) -> str:
+    host = validate_url(f"https://[{host}]" if ":" in host else f"https://{host}")
     try:
         records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
-        raise UnsafeURL("无法解析服务地址，请检查域名。") from None
+        raise UnsafeURL("无法解析服务地址，请检查域名。", reason="dns_failure") from None
     addresses = [ipaddress.ip_address(record[4][0]) for record in records]
+    fake_addresses = [address for address in addresses if address.version == 4
+                      and address in ipaddress.ip_network("198.18.0.0/15")]
+    # Only Fake-IP may trigger recovery. Never ignore other unsafe OS answers.
+    if any(not public_address(address) and address not in fake_addresses
+           for address in addresses):
+        raise UnsafeURL("地址不安全：域名解析到了非公网地址。", reason="non_public")
+    if fake_addresses:
+        addresses = resolve_public_doh(host)
     if not addresses or any(not public_address(address) for address in addresses):
-        raise UnsafeURL("地址不安全：域名解析到了非公网地址。")
+        raise UnsafeURL("地址不安全：域名解析到了非公网地址。", reason="non_public")
     return str(addresses[0])
+
+
+def resolve_public_doh(host: str):
+    """Recover Fake-IP via fixed HTTPS DNS; send only the hostname, never API data."""
+    addresses = []
+    try:
+        # Numeric bootstrap avoids resolving the DNS service through Fake-IP.
+        # A separate client prevents recursive resolution and credential sharing.
+        with httpx.Client(timeout=4.0, trust_env=False, follow_redirects=False,
+                          verify=True) as client:
+            for kind in (1, 28):
+                with client.stream("GET", "https://1.1.1.1/dns-query",
+                                   params={"name": host, "type": kind},
+                                   headers={"Accept": "application/dns-json"}) as response:
+                    response.raise_for_status()
+                    body = bytearray()
+                    for chunk in response.iter_bytes(chunk_size=4096):
+                        body.extend(chunk)
+                        if len(body) > 65536:
+                            raise ValueError("DNS response too large")
+                data = json.loads(body)
+                if data.get("Status") != 0 or data.get("TC"):
+                    raise ValueError("DNS query failed")
+                questions = data.get("Question", [])
+                if (len(questions) != 1 or questions[0].get("type") != kind
+                        or questions[0].get("name", "").rstrip(".").lower() != host):
+                    raise ValueError("DNS question mismatch")
+                for record in data.get("Answer", []):
+                    if record.get("type") in (1, 28):
+                        address = ipaddress.ip_address(record["data"])
+                        if address.version != (4 if record["type"] == 1 else 6):
+                            raise ValueError("DNS address type mismatch")
+                        addresses.append(address)
+        if not addresses:
+            raise ValueError("No DNS addresses")
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
+        raise UnsafeURL("Fake-IP 公网解析回退失败。", reason="fake_ip") from None
+    # Check every A/AAAA answer, including mixed public/private answers.
+    if any(not public_address(address) for address in addresses):
+        raise UnsafeURL("地址不安全：公网 DNS 返回非公网地址。", reason="non_public")
+    return addresses
 
 
 class PublicBackend(httpcore.SyncBackend):

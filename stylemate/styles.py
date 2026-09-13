@@ -64,7 +64,7 @@ h1, h2, h3, p { color: var(--ink); }
 [data-testid="stFileUploaderDropzoneInstructions"] small { color: var(--muted); }
 
 .question { font-size: 1.16rem; font-weight: 760; margin: 1.05rem 0 .4rem; }
-[data-testid="stRadio"] > div { gap: .55rem; }
+[data-testid="stRadio"] > div { gap: .55rem; flex-wrap: wrap; }
 [data-testid="stRadio"] label {
   border: 1px solid var(--line); border-radius: 9px; padding: .55rem .85rem;
   background: white; transition: all .18s ease;
@@ -122,6 +122,29 @@ button[kind="primary"] p, button[kind="primary"] span { color: white !important;
   .garment-mark { display: none; }
   .look-body { grid-template-columns: 1fr; min-height: auto; }
   .reason { border-left: 0; border-top: 1px solid var(--line); padding: .8rem 0 0; }
+}
+
+/* 手机尺寸：无横向溢出，触控目标更大，三套结果纵向堆叠后可自然滑动切换。 */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; max-width: 100vw; }
+  [data-testid="stAppViewContainer"] > .main .block-container { padding: .8rem .85rem 3rem; }
+  [data-testid="stVerticalBlock"] { min-width: 0; }
+  [data-testid="stImage"] img { max-width: 100%; height: auto; }
+  [data-testid="stRadio"] label { padding: .65rem .7rem; font-size: .95rem; }
+  [data-testid="stFileUploader"] { padding: .35rem; }
+  [data-testid="stFileUploaderDropzone"] { min-height: 130px; }
+  .stButton > button, .stDownloadButton > button {
+    min-height: 3rem; font-size: 1rem; border-radius: 10px;
+  }
+  .brand { font-size: 1.55rem; }
+  .api-state { font-size: .8rem; }
+  .hero-copy h1, .api-copy h1 { font-size: 2.6rem; }
+  .results-head h1 { font-size: 2.1rem; }
+  .look-style { font-size: 1.3rem; }
+  .look-score { font-size: 1.1rem; }
+  .question { font-size: 1.05rem; margin: .85rem 0 .35rem; }
+  .piece-list { font-size: .88rem; }
+  .reason p { font-size: .85rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

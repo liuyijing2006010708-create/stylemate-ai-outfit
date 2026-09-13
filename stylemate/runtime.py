@@ -8,8 +8,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
 from urllib.parse import urlsplit, urlunsplit
-from .security import UnsafeURL, validate_url, secure_http_client, protect_provider_logs
+from .consistency import PlanRejected
+from .security import UnsafeURL, validate_url, resolve_public, secure_http_client, protect_provider_logs
 from .operations import BusyError
+from .rightapi_images import RightAPIError
+from .uploads import InvalidImage
 
 from openai import (
     APIConnectionError,
@@ -142,15 +145,47 @@ def image_generation_mode(base_url: str) -> str:
     return "openai_edits"
 
 
+def guess_preset(base_url: str) -> str:
+    """Preset key matching a stored base URL; unknown relays stay custom."""
+
+    try:
+        hostname = urlsplit(normalize_base_url(base_url)).hostname or ""
+    except ValueError:
+        return "custom"
+    if hostname in RIGHTAPI_HOSTS:
+        return "rightapi"
+    if hostname == "api.openai.com":
+        return "openai"
+    return "custom"
+
+
 def safe_connection_error(error: Exception) -> str:
     """Map provider failures to actionable messages without echoing responses."""
 
     if isinstance(error, BusyError):
         return "操作繁忙或过于频繁，请等待至少 10 秒后重试（每 10 分钟最多 8 次）。"
-    if isinstance(error, UnsafeURL) or isinstance(getattr(error, "__cause__", None), UnsafeURL):
-        return "地址校验失败：请使用可解析的 HTTPS 公网服务地址。"
+    cause = error
+    for _ in range(6):
+        if isinstance(cause, UnsafeURL):
+            return {
+                "fake_ip": "检测到代理 Fake-IP，已尝试通过 Cloudflare 加密 DNS 查询真实公网 IP，但查询未成功。"
+                           "请检查网络能否访问 1.1.1.1:443，或在 Clash 为 API 域名配置 Fake-IP 例外后重试。不要把 Base URL 改成保留 IP。",
+                "dns_failure": "地址校验失败：DNS 无法解析服务域名。请核对 Base URL 拼写、网络和代理 DNS 设置后重试。",
+                "non_public": "地址校验失败：域名解析到了内网或保留地址。请使用真实公网 API 地址；不要关闭安全校验。",
+            }.get(cause.reason, "地址校验失败：仅允许 HTTPS 公网地址，不允许本机、内网、带账号密码或格式异常的 URL。")
+        cause = getattr(cause, "__cause__", None)
+        if cause is None:
+            break
     if isinstance(error, TimeoutError):
         return "等待超时；已提交的图片任务可继续查询，不会重复提交。"
+    # Only fixed machine codes are compared; response bodies are never shown.
+    body = getattr(error, "body", None)
+    code = body.get("code") if isinstance(body, dict) else None
+    code = code or getattr(error, "code", None)
+    if code == "model_not_found":
+        return "模型不存在或无权访问：请核对模型名称是否为该服务商支持的确切名称。"
+    if code == "insufficient_quota":
+        return "余额或额度不足：请在中转站充值或更换额度更高的 Key。"
     status_code = getattr(error, "status_code", None)
     if status_code in {400, 422}:
         return "请求不兼容：请检查模型名称、文本协议和图片接口支持情况。"
@@ -160,13 +195,26 @@ def safe_connection_error(error: Exception) -> str:
         return "中转站账户余额不足，请充值后再试。"
     if status_code == 404:
         return "接口不存在：请检查 API Base URL 是否包含正确的渠道路径和 /v1。"
+    if status_code == 408:
+        return "服务商响应超时，请稍后重试；已提交的图片任务可继续查询。"
     if status_code == 429:
         return "请求被限流或额度已用完，请稍后重试并检查账户额度。"
     if isinstance(status_code, int) and status_code >= 500:
         return "中转站或其上游服务暂时异常，请稍后重试。"
+    # These classes only ever carry fixed, locally written messages.
+    if isinstance(error, (InvalidImage, RightAPIError, PlanRejected)):
+        return str(error)
     if error.__class__.__name__ in {"APIConnectionError", "APITimeoutError"}:
         return "无法连接中转站，请检查网络、域名和 HTTPS 证书。"
     return "连接验证失败，请检查 Base URL、API Key、网络和中转站权限。"
+
+
+def verify_service_address(base_url: str) -> str:
+    """DNS-only preflight: never send credentials, photos or model requests."""
+    normalized = normalize_base_url(base_url)
+    parts = urlsplit(normalized)
+    resolve_public(parts.hostname, parts.port or 443)
+    return "地址格式与公网 DNS 校验通过；尚未验证 HTTPS 连通性、Key、模型或额度。"
 
 
 def decide_run_mode(

@@ -1,0 +1,13 @@
+# Install only inside the rented GPU environment after selecting its CUDA image.
+# Freeze tested versions into a lock file before the full run.
+torch
+torchvision
+diffusers
+transformers
+accelerate
+peft
+datasets
+safetensors
+huggingface-hub
+Pillow
+tqdm

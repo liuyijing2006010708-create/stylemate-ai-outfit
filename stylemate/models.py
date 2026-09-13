@@ -51,13 +51,10 @@ class Outfit(BaseModel):
 
     @property
     def pieces(self) -> list[str]:
-        return [
-            self.top,
-            self.bottom,
-            self.shoes,
-            self.bag,
-            *self.accessories,
-        ]
+        # 完整单品清单：页面列表、历史与导出都来自这里，与生图提示词同源。
+        values = [self.top, self.outerwear, self.bottom, self.shoes, self.bag,
+                  *self.accessories]
+        return [value for value in values if value.strip() and value.strip() != "无"]
 
 
 class OutfitPlan(BaseModel):

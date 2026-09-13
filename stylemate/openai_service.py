@@ -9,8 +9,10 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from .models import GarmentAnalysis, Outfit, OutfitPlan
+from .consistency import build_image_prompt
 from .rightapi_images import RightAPIImageClient
 from .security import secure_http_client, protect_provider_logs
+from .uploads import ensure_image_bytes
 from .runtime import (
     APIConfig,
     DEFAULT_BASE_URL,
@@ -160,6 +162,9 @@ class StyleMateAI:
         garment: GarmentAnalysis,
         occasion: str,
         preferred_style: str,
+        *,
+        conditions: str = "",
+        preferences: str = "",
     ) -> OutfitPlan:
         user_prompt = (
             f"用户单品：{garment.model_dump_json(ensure_ascii=False)}\n"
@@ -167,10 +172,19 @@ class StyleMateAI:
             "每套包含上装、外套、下装、鞋、包、配饰、中文理由、0-100 兼容度，"
             "以及一段用于生成无人物平铺图的英文 image_prompt。"
         )
+        if conditions:
+            user_prompt += f"\n环境与活动：{conditions}"
+        if preferences:
+            user_prompt += f"\n用户硬性约束（必须逐条遵守）：{preferences}"
         instructions = (
-            "你是专业造型师和推荐系统候选生成器。输出恰好三套明显不同、"
-            "现实可穿、可解释的完整搭配。必须包含用户原单品，不得更换它；"
+            "你是专业造型师和推荐系统候选生成器。输出恰好三套完整搭配，按位置给定明确目标："
+            "第 1 套“稳妥”，最安全耐看；第 2 套“进阶”，在配色或材质上更有造型感；"
+            "第 3 套“突破”，在轮廓、颜色或风格方向上明显更大胆但仍适合场景。"
+            "三套之间至少在下装、鞋或整体方向上有一处清晰差异，不得只微调配饰。"
+            "必须包含用户原单品，不得更换它；"
             "兼容度分数要保守且能反映场景、色彩、廓形和材质协调度。"
+            "若有环境与活动信息，按高温、降雨、寒冷等条件调整面料、鞋子和外套。"
+            "用户硬性约束是硬性要求：禁用单品不得以任何形式出现在任何一套中。"
         )
         if self.text_api == "chat_completions":
             response = self.client.chat.completions.parse(
@@ -196,6 +210,61 @@ class StyleMateAI:
             raise RuntimeError("搭配规划没有返回结构化结果")
         return response.output_parsed
 
+    def regenerate_outfit(
+        self,
+        garment: GarmentAnalysis,
+        occasion: str,
+        preferred_style: str,
+        *,
+        avoid: list[str],
+        conditions: str = "",
+        preferences: str = "",
+    ) -> Outfit:
+        """Regenerate exactly one look, clearly different from `avoid` entries."""
+
+        avoid_lines = "\n".join(f"- {index}: {text}" for index, text in enumerate(avoid, start=1))
+        user_prompt = (
+            f"用户单品：{garment.model_dump_json(ensure_ascii=False)}\n"
+            f"场景：{occasion}\n偏好风格：{preferred_style}\n"
+            f"现有搭配（新搭配必须与每一套都明显不同）：\n{avoid_lines}\n"
+            "只输出一套新搭配，字段与之前相同：上装、外套、下装、鞋、包、配饰、"
+            "中文理由、0-100 兼容度、英文 image_prompt。"
+        )
+        if conditions:
+            user_prompt += f"\n环境与活动：{conditions}"
+        if preferences:
+            user_prompt += f"\n用户硬性约束（必须逐条遵守）：{preferences}"
+        instructions = (
+            "你是专业造型师。针对被替换的位置生成恰好一套新搭配："
+            "必须包含用户原单品且不得更换它；与列出的每一套现有搭配相比，"
+            "至少在下装、鞋或整体风格方向上有一处清晰差异，不得只换配饰。"
+            "兼容度分数保守且可解释。"
+            "用户硬性约束是硬性要求：禁用单品不得以任何形式出现。"
+        )
+        if self.text_api == "chat_completions":
+            response = self.client.chat.completions.parse(
+                model=self.text_model,
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format=Outfit,
+            )
+            parsed = response.choices[0].message.parsed if response.choices else None
+            if not parsed:
+                raise RuntimeError("单套替换没有返回结构化结果")
+            return parsed
+
+        response = self.client.responses.parse(
+            model=self.text_model,
+            instructions=instructions,
+            input=user_prompt,
+            text_format=Outfit,
+        )
+        if not response.output_parsed:
+            raise RuntimeError("单套替换没有返回结构化结果")
+        return response.output_parsed
+
     def generate_outfit_image(
         self,
         image_bytes: bytes,
@@ -209,18 +278,9 @@ class StyleMateAI:
         extension = mime_type.split("/")[-1].replace("jpeg", "jpg")
         image_file = io.BytesIO(image_bytes)
         image_file.name = f"garment.{extension}"
-        prompt = f"""
-Create a premium, photorealistic, top-down fashion flat-lay on a true white studio background.
-
-The uploaded image contains the user's real garment: {garment.display_name}.
-Preserve that exact garment as faithfully as possible: its color, silhouette, material,
-pattern, construction, and these identity details: {', '.join(garment.preservation_notes)}.
-Do not redesign or duplicate the uploaded garment.
-
-Complete this look: {outfit.image_prompt}
-All pieces must be fully visible, realistically scaled, neatly separated, and arranged in
-an editorial but practical composition. No person, mannequin, text, logo, or watermark.
-""".strip()
+        # Same structured fields the results page renders, so the image
+        # cannot drift from the text plan.
+        prompt = build_image_prompt(garment, outfit)
         if self.rightapi_images is not None:
             if task_state is not None:
                 return self.rightapi_images.generate(image_bytes, mime_type, prompt,
@@ -236,4 +296,4 @@ an editorial but practical composition. No person, mannequin, text, logo, or wat
         )
         if not result.data or not result.data[0].b64_json:
             raise RuntimeError("图像模型没有返回可用图片")
-        return base64.b64decode(result.data[0].b64_json)
+        return ensure_image_bytes(base64.b64decode(result.data[0].b64_json))

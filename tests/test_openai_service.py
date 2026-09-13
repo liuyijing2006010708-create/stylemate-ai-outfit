@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from stylemate.models import GarmentAnalysis, Outfit
 from stylemate.openai_service import StyleMateAI
 
@@ -181,3 +183,37 @@ def test_separate_image_key_is_only_sent_to_image_client():
     StyleMateAI(api_key="text-only", image_api_key="image-only",
                 base_url="https://example.com/v1", client_factory=factory)
     assert [client["api_key"] for client in created] == ["text-only", "image-only"]
+
+
+def test_plan_prompt_carries_conditions_preferences_and_distinct_goals() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeResponses:
+        def parse(self, **kwargs: object) -> object:
+            captured.update(kwargs)
+            return SimpleNamespace(output_parsed=None)
+
+    fake_client = SimpleNamespace(responses=FakeResponses())
+    service = StyleMateAI(
+        api_key="relay-key",
+        base_url="https://relay.example.com/v1",
+        text_model="relay-vision",
+        client_factory=lambda **_: fake_client,
+    )
+    garment = GarmentAnalysis(
+        category="上装", subcategory="短款皮夹克", color="深棕色", material="皮革",
+        pattern="无", fit="修身", seasons=["秋季"], styles=["美式复古"],
+    )
+    with pytest.raises(RuntimeError):
+        service.plan_outfits(
+            garment, "上班", "美式复古",
+            conditions="气温：寒冷 0–9°C；天气：小雨；通勤：步行较久",
+            preferences="禁用单品（任何一套都不得出现）：高跟鞋",
+        )
+
+    prompt = str(captured["input"])
+    assert "寒冷 0–9°C" in prompt and "小雨" in prompt
+    assert "高跟鞋" in prompt and "硬性约束" in prompt
+    instructions = str(captured["instructions"])
+    assert "稳妥" in instructions and "进阶" in instructions and "突破" in instructions
+    assert "面料、鞋子和外套" in instructions

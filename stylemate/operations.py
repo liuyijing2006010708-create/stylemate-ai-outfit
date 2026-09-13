@@ -20,9 +20,12 @@ class OperationGate:
         self.active_count = 0
 
     @contextmanager
-    def claim(self, session_id, *api_keys):
-        identities = {"session:" + session_id}
-        identities.update("key:" + hashlib.sha256(key.encode()).hexdigest() for key in api_keys)
+    def claim(self, session_id, *api_keys, scope=""):
+        # Scopes keep the two-step flow (identify, then confirm and generate)
+        # outside its own 10s cooldown; each scope is still rate limited.
+        prefix = f"{scope}:" if scope else ""
+        identities = {prefix + "session:" + session_id}
+        identities.update(prefix + "key:" + hashlib.sha256(key.encode()).hexdigest() for key in api_keys)
         with self.lock:
             now = self.clock()
             self.history = {k: [t for t in v if now - t < self.window]
