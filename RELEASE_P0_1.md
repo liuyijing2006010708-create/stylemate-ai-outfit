@@ -16,10 +16,14 @@
 |---|---|
 | 本地代码与原仓库历史对齐 | 已完成；工作文件不覆盖，历史从 origin/main 接续 |
 | 本地回归、依赖检查与安全审计 | Python 3.12：167 项 pytest 通过，pip check 与 compileall 通过；pip-audit 2.10.1 审计 requirements.txt 未发现已知漏洞（2026-09-13） |
-| 远程 GitHub Actions | 待推送后核实，不能以本地测试代替 |
+| 远程 GitHub Actions | 13fe158 已通过 Linux / Python 3.12 的回归与审计；后续提交仍需通过 [PR #1 Checks](https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/pull/1/checks)，不能以本地测试代替 |
 | 线上版本与匿名 Demo | 待合并部署后核实页面版本号 |
 | 真实识别、搭配与单张生图 | 待用户在页面亲自配置 Key 并验收 |
 | 演示视频 | 已完成固定 Demo → 三套结果 → 收藏 → PNG 下载的隔离 Chrome 录像；无页面异常，不调用真实 API，不含 Key；文件 outputs/p0-1-demo/stylemate-fixed-demo.webm |
+
+已配置 main 分支保护：必须经 PR，必须通过 GitHub Actions 的 `test` 检查，合并前须与 main 保持最新；管理员同样受约束，禁止强推和删除分支。个人仓库不要求第二位审批者，发布批准由维护者明确确认。
+
+CI 首次实跑发现 `pytest -q` 在干净环境缺少项目模块路径，已修复为 `python -m pytest -q`，未跳过测试。纯 Git 跟踪文件的独立工作树也通过 167 项测试，避免本机未上传文件掩盖缺失依赖。
 
 ## 真实调用验收（由维护者操作）
 
