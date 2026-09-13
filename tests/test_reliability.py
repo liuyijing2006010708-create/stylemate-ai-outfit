@@ -30,6 +30,31 @@ def test_mixed_dns_answers_fail_closed(monkeypatch):
         resolve_public("relay.example", 443)
 
 
+def test_fake_ip_error_is_actionable_even_through_sdk_wrapper(monkeypatch):
+    monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [
+        (2, 1, 6, "", ("198.18.0.49", 443))])
+    def unavailable(**kwargs):
+        raise httpx.ConnectError("secret DNS detail")
+    monkeypatch.setattr("stylemate.security.httpx.Client", unavailable)
+    with pytest.raises(UnsafeURL) as caught:
+        resolve_public("relay.example", 443)
+    wrapper = RuntimeError("secret provider payload")
+    wrapper.__cause__ = caught.value
+    message = safe_connection_error(wrapper)
+    assert "Fake-IP" in message and "真实" in message
+    assert "secret" not in message
+
+
+def test_dns_failure_has_distinct_actionable_message(monkeypatch):
+    import socket
+    def fail(*a, **k): raise socket.gaierror("private DNS detail")
+    monkeypatch.setattr(socket, "getaddrinfo", fail)
+    with pytest.raises(UnsafeURL) as caught:
+        resolve_public("relay.example", 443)
+    assert "DNS" in safe_connection_error(caught.value)
+    assert "private" not in safe_connection_error(caught.value)
+
+
 def test_connect_pins_checked_ip(monkeypatch):
     monkeypatch.setattr("socket.getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("8.8.8.8", 443))])
     connected = []

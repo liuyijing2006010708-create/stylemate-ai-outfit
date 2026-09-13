@@ -19,3 +19,8 @@ checkpoints/
 *.zip
 *.pyc
 .DS_Store
+fig/
+*.pem
+*.key
+*.webm
+*.mp4

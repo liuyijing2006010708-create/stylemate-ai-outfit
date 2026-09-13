@@ -117,6 +117,7 @@ class RightAPIImageClient:
                     )
                 except RightAPIError as exc:
                     transient_errors += 1
+                    state["query_errors"] = transient_errors
                     progress("query_error")
                     if transient_errors >= 3 or exc.status_code not in {None, 429, 500, 502, 503, 504}:
                         raise

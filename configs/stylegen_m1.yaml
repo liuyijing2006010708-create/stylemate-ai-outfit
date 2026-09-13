@@ -1,0 +1,48 @@
+experiment:
+  name: stylegen_m1
+  hypothesis: A small edit LoRA can learn to expand one garment into a coherent flat-lay outfit.
+  status: ready_for_gpu_smoke_test
+
+model:
+  model_id: black-forest-labs/FLUX.2-klein-base-4B
+  task: image_editing
+  adapter: lora
+  license: apache-2.0
+
+dataset:
+  root: data/processed
+  train_split: train
+  validation_split: val
+  test_split: test
+  reference_directory: reference
+  target_directory: target
+  metadata_directory: metadata
+  resolution: 512
+  target_train_pairs: 400
+  caption: Create a coordinated flat-lay outfit containing the reference item.
+
+lora:
+  rank: 32
+  alpha: 32
+  dropout: 0.0
+
+training:
+  seed: 42
+  train_batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 0.0001
+  max_train_steps: 400
+  mixed_precision: bf16
+  gradient_checkpointing: true
+  checkpointing_steps: 100
+
+validation:
+  every_n_steps: 100
+  fixed_seed: 2026
+  num_samples: 8
+  compare_against_base: true
+  same_prompt_reference_seed_size: true
+
+output:
+  directory: outputs/stylegen_m1
+  save_adapter_only: true
