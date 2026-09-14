@@ -1,5 +1,5 @@
 from stylemate.demo import demo_payload
-from stylemate.models import Outfit
+from stylemate.models import GarmentAnalysis, Outfit
 from stylemate.ranking import rank_outfits
 
 
@@ -22,6 +22,36 @@ def test_demo_payload_is_complete() -> None:
     assert all(0 <= outfit.compatibility_score <= 100 for outfit in plan.outfits)
 
 
+def test_garment_display_name_does_not_repeat_color() -> None:
+    garment = GarmentAnalysis(
+        category="上衣",
+        subcategory="黑色细肩带吊带背心",
+        color="黑色",
+        material="弹力面料",
+        pattern="纯色",
+        fit="修身",
+        seasons=["夏季"],
+        styles=["Y2K"],
+    )
+
+    assert garment.display_name == "黑色细肩带吊带背心"
+
+
+def test_garment_display_name_uses_primary_color_only() -> None:
+    garment = GarmentAnalysis(
+        category="上衣",
+        subcategory="针织开衫",
+        color="黑色，领口与门襟带灰色滚边",
+        material="针织",
+        pattern="纯色",
+        fit="宽松",
+        seasons=["秋季"],
+        styles=["极简"],
+    )
+
+    assert garment.display_name == "黑色针织开衫"
+
+
 def test_ranker_boosts_exact_preference_without_mutating_source() -> None:
     _, plan = demo_payload()
     original = plan.outfits[0].compatibility_score
@@ -29,4 +59,3 @@ def test_ranker_boosts_exact_preference_without_mutating_source() -> None:
     matching = next(item for item in ranked if item.style == "韩系简约")
     assert matching.compatibility_score == min(99, original + 3)
     assert plan.outfits[0].compatibility_score == original
-

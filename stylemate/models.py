@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field, field_validator
 
 
 class GarmentAnalysis(BaseModel):
     category: str = Field(description="服装大类，例如外套、衬衫")
-    subcategory: str = Field(description="具体品类，例如短款皮夹克")
-    color: str
+    subcategory: str = Field(description="只填写具体品类，不重复颜色，例如短款皮夹克")
+    color: str = Field(description="主色；滚边、纽扣等辅色细节写入 preservation_notes")
     material: str
     pattern: str
     fit: str
@@ -19,7 +21,11 @@ class GarmentAnalysis(BaseModel):
 
     @property
     def display_name(self) -> str:
-        return f"{self.color}{self.subcategory}"
+        subcategory = self.subcategory.strip()
+        color = re.split(r"[，,；;]", self.color, maxsplit=1)[0].strip()
+        if not color or subcategory.startswith(color):
+            return subcategory
+        return f"{color}{subcategory}"
 
     @property
     def tags(self) -> list[str]:
@@ -59,4 +65,3 @@ class Outfit(BaseModel):
 
 class OutfitPlan(BaseModel):
     outfits: list[Outfit] = Field(min_length=3, max_length=3)
-
