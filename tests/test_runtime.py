@@ -84,11 +84,12 @@ def test_default_models_are_not_tied_to_a_specific_relay() -> None:
         base_url="https://api.openai.com/v1",
         text_model=None,
         image_model=None,
-        text_api="chat_completions",
+        text_api=None,
     )
 
     assert config.text_model == "gpt-4.1-mini"
     assert config.image_model == "gpt-image-1"
+    assert config.text_api == "chat_completions"
 
 
 @pytest.mark.parametrize(

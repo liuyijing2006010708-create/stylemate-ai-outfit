@@ -61,7 +61,7 @@ class APIConfig:
         key = normalize_api_key(api_key)
         if not key:
             raise ValueError("API Key 不能为空。")
-        protocol = (text_api or "responses").strip().lower()
+        protocol = (text_api or "chat_completions").strip().lower()
         if protocol not in {"responses", "chat_completions"}:
             raise ValueError("文本接口必须是 responses 或 chat_completions。")
         normalized_base_url = normalize_base_url(base_url)

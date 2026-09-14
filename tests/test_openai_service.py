@@ -198,6 +198,7 @@ def test_plan_prompt_carries_conditions_preferences_and_distinct_goals() -> None
         api_key="relay-key",
         base_url="https://relay.example.com/v1",
         text_model="relay-vision",
+        text_api="responses",
         client_factory=lambda **_: fake_client,
     )
     garment = GarmentAnalysis(

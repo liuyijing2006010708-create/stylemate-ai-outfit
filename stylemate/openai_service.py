@@ -46,7 +46,7 @@ class StyleMateAI:
             image_api_key=image_api_key,
             text_model=text_model or os.getenv("OPENAI_TEXT_MODEL", DEFAULT_TEXT_MODEL),
             image_model=image_model or os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
-            text_api=text_api or os.getenv("OPENAI_TEXT_API", "responses"),
+            text_api=text_api or os.getenv("OPENAI_TEXT_API", "chat_completions"),
         )
         protect_provider_logs()
         self.client = client_factory(
