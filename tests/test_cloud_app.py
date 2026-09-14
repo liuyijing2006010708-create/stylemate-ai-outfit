@@ -20,6 +20,8 @@ def test_first_visit_defaults_to_generic_openai_compatible_provider():
 
     assert preset.value == "通用 OpenAI 兼容接口"
     assert any(x.label == "API Base URL" for x in app.text_input)
+    protocol = next(x for x in app.selectbox if x.label == "文本接口协议")
+    assert protocol.value == "chat_completions"
 
 
 def test_cloud_visitors_do_not_inherit_server_key(monkeypatch):
@@ -161,6 +163,9 @@ def test_input_page_offers_conditions_preferences_and_photo_helpers(monkeypatch)
     assert {"气温", "天气", "通勤方式"} <= {box.label for box in app.selectbox}
     assert {"不喜欢的颜色", "禁用单品（任何一套都不会出现）", "版型偏好"} <= {x.label for x in app.text_input}
     assert any("预算档位" in box.label for box in app.selectbox)
+    commute = next(box for box in app.selectbox if box.label == "通勤方式")
+    assert "骑自行车 / 电动车" in commute.options
+    assert "开车" in commute.options
 
 
 def test_history_records_runs_and_results_offer_export(monkeypatch):

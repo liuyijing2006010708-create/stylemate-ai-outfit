@@ -59,7 +59,7 @@ OCCASIONS = ["上班", "上课", "约会", "旅行", "聚会"]
 STYLES = ["韩系简约", "City Boy", "美式复古", "极简", "Old Money", "Y2K"]
 TEMPERATURES = ["炎热 ≥28°C", "温暖 20–27°C", "凉爽 10–19°C", "寒冷 0–9°C", "严寒 <0°C"]
 WEATHER = ["晴", "多云", "阴", "小雨", "大雨", "雪", "大风"]
-COMMUTES = ["短途步行", "步行较久（>20 分钟）", "主要在室内", "骑车 / 开车"]
+COMMUTES = ["短途步行", "步行较久（>20 分钟）", "主要在室内", "骑自行车 / 电动车", "开车"]
 BUDGETS = ["不限", "经济", "中等", "高端"]
 GENDERS = ["不提供", "女", "男", "非二元／其他"]
 AGE_GROUPS = ["不提供", "12 岁及以下", "13–17 岁", "18–24 岁", "25–34 岁",
@@ -110,7 +110,7 @@ def init_state() -> None:
         "api_image_base_url": os.getenv("OPENAI_IMAGE_BASE_URL", ""),
         "api_text_model": os.getenv("OPENAI_TEXT_MODEL", DEFAULT_TEXT_MODEL),
         "api_image_model": os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
-        "api_text_api": os.getenv("OPENAI_TEXT_API", "responses"),
+        "api_text_api": os.getenv("OPENAI_TEXT_API", "chat_completions"),
         "demo_access": False,
         "garment": None,
         "plan": None,
@@ -525,7 +525,7 @@ def render_api_setup() -> None:
                 "图片编辑模型", value=st.session_state.api_image_model,
                 help="填写所选生图服务商实际支持的模型名；不会随文本预设切换而覆盖。",
             )
-            if preset == PRESET_CUSTOM:
+            if preset in {PRESET_COMPATIBLE, PRESET_CUSTOM}:
                 protocol_options = ("responses", "chat_completions")
                 current_protocol = st.session_state.api_text_api
                 protocol_index = protocol_options.index(current_protocol) if current_protocol in protocol_options else 0
@@ -1118,7 +1118,7 @@ def render_results() -> None:
                 <div class="look-head">
                   <span class="look-index">LOOK {index:02d}</span>
                   <span class="look-style">{style_name}</span>
-                  <span class="look-score">{outfit.compatibility_score}%</span>
+                  <span class="look-score">AI 推荐度 {outfit.compatibility_score}/100</span>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1207,7 +1207,7 @@ def render_results() -> None:
         for index, entry in enumerate(entries):
             st.markdown(f"**{entry['time']} · {html.escape(entry['label'])}**")
             lines = [
-                f"LOOK {order:02d} {look['style']}（{look['score']}%）："
+                f"LOOK {order:02d} {look['style']}（AI 推荐度 {look['score']}/100）："
                 + " + ".join(piece for piece in look["pieces"] if piece)
                 for order, look in enumerate(entry["looks"], start=1)
             ]

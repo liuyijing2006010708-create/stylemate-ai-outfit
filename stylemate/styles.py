@@ -98,7 +98,7 @@ button[kind="primary"] p, button[kind="primary"] span { color: white !important;
 .look-head { display: flex; align-items: baseline; gap: .65rem; margin-bottom: .8rem; }
 .look-index { font-size: .78rem; font-weight: 800; letter-spacing: .12em; }
 .look-style { font-family: Georgia, "Noto Serif SC", serif; font-size: 1.65rem; font-weight: 700; }
-.look-score { color: var(--blue); font-family: Georgia, serif; font-size: 1.35rem; font-weight: 700; margin-left: auto; }
+.look-score { color: var(--blue); font-size: .82rem; font-weight: 750; margin-left: auto; white-space: nowrap; }
 .look-image-label { color: var(--muted); font-size: .72rem; margin-top: -.25rem; }
 .look-body { display: grid; grid-template-columns: .9fr 1.1fr; gap: 1rem; margin: 1rem 0 .7rem; min-height: 11.8rem; }
 .piece-list { margin: 0; padding-left: 1.15rem; font-size: .91rem; line-height: 1.75; }
@@ -141,7 +141,7 @@ button[kind="primary"] p, button[kind="primary"] span { color: white !important;
   .hero-copy h1, .api-copy h1 { font-size: 2.6rem; }
   .results-head h1 { font-size: 2.1rem; }
   .look-style { font-size: 1.3rem; }
-  .look-score { font-size: 1.1rem; }
+  .look-score { font-size: .76rem; }
   .question { font-size: 1.05rem; margin: .85rem 0 .35rem; }
   .piece-list { font-size: .88rem; }
   .reason p { font-size: .85rem; }

@@ -74,6 +74,10 @@ def test_relay_config_normalizes_base_url_and_models() -> None:
     assert config.text_api == "chat_completions"
 
 
+def test_unknown_provider_uses_generic_display_name() -> None:
+    assert provider_display_name("https://relay.example.com/v1") == "兼容接口"
+
+
 @pytest.mark.parametrize(
     "url",
     [
