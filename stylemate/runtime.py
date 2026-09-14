@@ -24,8 +24,8 @@ from openai import (
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_TEXT_MODEL = "gpt-5.6-luna"
-DEFAULT_IMAGE_MODEL = "gpt-image-2"
+DEFAULT_TEXT_MODEL = "gpt-4.1-mini"
+DEFAULT_IMAGE_MODEL = "gpt-image-1"
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 # RightAPI 与 RightCode（right.codes）是同一家中转平台，共用同一套协议。
 RIGHTAPI_HOSTS = {"rightapi.ai", "www.rightapi.ai", "right.codes", "www.right.codes"}

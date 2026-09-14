@@ -204,7 +204,7 @@ assert st.session_state.prep_error == ""
 
 def test_custom_protocol_and_image_model_survive_settings_roundtrip():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
-    next(w for w in app.selectbox if w.label == "服务商预设").set_value("自定义").run()
+    next(w for w in app.selectbox if w.label == "服务商预设").set_value("高级自定义").run()
     next(w for w in app.text_input if w.label == "API Key（官方或中转站）").set_value("fake-config-key")
     next(w for w in app.selectbox if w.label == "文本接口协议").set_value("chat_completions")
     next(w for w in app.text_input if w.label == "图片编辑模型").set_value("custom-image-model")
@@ -212,7 +212,7 @@ def test_custom_protocol_and_image_model_survive_settings_roundtrip():
     assert not app.exception and app.session_state["stage"] == "input"
     next(b for b in app.button if b.label == "⚙ API 设置").click().run()
     assert not app.exception
-    assert next(w for w in app.selectbox if w.label == "服务商预设").value == "自定义"
+    assert next(w for w in app.selectbox if w.label == "服务商预设").value == "高级自定义"
     assert next(w for w in app.selectbox if w.label == "文本接口协议").value == "chat_completions"
     assert next(w for w in app.text_input if w.label == "图片编辑模型").value == "custom-image-model"
 
