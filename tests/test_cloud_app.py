@@ -11,7 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_release_identifier_visible_without_api_key():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
     assert not app.exception
-    assert any("版本 0.2.0-rc.1" in item.value for item in app.caption)
+    assert any("版本 0.3.0" in item.value for item in app.caption)
+
+
+def test_first_visit_defaults_to_generic_openai_compatible_provider():
+    app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
+    preset = next(x for x in app.selectbox if x.label == "服务商预设")
+
+    assert preset.value == "通用 OpenAI 兼容接口"
+    assert any(x.label == "API Base URL" for x in app.text_input)
+    protocol = next(x for x in app.selectbox if x.label == "文本接口协议")
+    assert protocol.value == "chat_completions"
 
 
 def test_cloud_visitors_do_not_inherit_server_key(monkeypatch):
@@ -105,7 +115,7 @@ def test_app_startup_uses_environment_key_for_private_use(monkeypatch):
 def test_rightapi_preset_fills_protocol_and_path():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
     next(x for x in app.text_input if x.label == "API Key（官方或中转站）").set_value("relay-key")
-    next(x for x in app.selectbox if x.label == "服务商预设").set_value("RightAPI 异步生图")
+    next(x for x in app.selectbox if x.label == "服务商预设").set_value("RightAPI / RightCode（异步生图）")
     app.run()
     next(x for x in app.button if x.label == "保存并开始使用").click().run()
     assert not app.exception
@@ -142,6 +152,8 @@ if st.session_state.stage != "confirm":
     labels = {x.label for x in app.text_input}
     assert {"品类", "颜色", "材质", "版型", "适合季节（用、分隔）"} <= labels
     assert any("调用" in x.value for x in app.radio if x.label == "本次生成范围")
+    source_identity = next(x for x in app.markdown if 'class="source-title"' in x.value)
+    assert source_identity.proto.allow_html
 
 
 def test_input_page_offers_conditions_preferences_and_photo_helpers(monkeypatch):
@@ -151,6 +163,9 @@ def test_input_page_offers_conditions_preferences_and_photo_helpers(monkeypatch)
     assert {"气温", "天气", "通勤方式"} <= {box.label for box in app.selectbox}
     assert {"不喜欢的颜色", "禁用单品（任何一套都不会出现）", "版型偏好"} <= {x.label for x in app.text_input}
     assert any("预算档位" in box.label for box in app.selectbox)
+    commute = next(box for box in app.selectbox if box.label == "通勤方式")
+    assert "骑自行车 / 电动车" in commute.options
+    assert "开车" in commute.options
 
 
 def test_history_records_runs_and_results_offer_export(monkeypatch):

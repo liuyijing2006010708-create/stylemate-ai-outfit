@@ -24,8 +24,8 @@ from openai import (
 
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_TEXT_MODEL = "gpt-5.6-luna"
-DEFAULT_IMAGE_MODEL = "gpt-image-2"
+DEFAULT_TEXT_MODEL = "gpt-4.1-mini"
+DEFAULT_IMAGE_MODEL = "gpt-image-1"
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
 # RightAPI 与 RightCode（right.codes）是同一家中转平台，共用同一套协议。
 RIGHTAPI_HOSTS = {"rightapi.ai", "www.rightapi.ai", "right.codes", "www.right.codes"}
@@ -61,7 +61,7 @@ class APIConfig:
         key = normalize_api_key(api_key)
         if not key:
             raise ValueError("API Key 不能为空。")
-        protocol = (text_api or "responses").strip().lower()
+        protocol = (text_api or "chat_completions").strip().lower()
         if protocol not in {"responses", "chat_completions"}:
             raise ValueError("文本接口必须是 responses 或 chat_completions。")
         normalized_base_url = normalize_base_url(base_url)
@@ -124,7 +124,7 @@ def provider_display_name(base_url: str) -> str:
         return "RightCode"
     if hostname == "api.openai.com":
         return "OpenAI"
-    return "自定义中转站"
+    return "兼容接口"
 
 
 def is_rightcode_host(hostname: str) -> bool:
@@ -228,7 +228,7 @@ def decide_run_mode(
     if demo_requested:
         return RunMode.DEMO
     if not normalize_api_key(api_key):
-        raise ValueError("请先配置 OpenAI API Key，再识别自己的图片。")
+        raise ValueError("请先配置 API Key，再识别自己的图片。")
     if not has_upload:
         raise ValueError("请先上传一张服装图片。")
     return RunMode.LIVE

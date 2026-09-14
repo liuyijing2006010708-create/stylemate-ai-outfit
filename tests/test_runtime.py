@@ -74,6 +74,24 @@ def test_relay_config_normalizes_base_url_and_models() -> None:
     assert config.text_api == "chat_completions"
 
 
+def test_unknown_provider_uses_generic_display_name() -> None:
+    assert provider_display_name("https://relay.example.com/v1") == "兼容接口"
+
+
+def test_default_models_are_not_tied_to_a_specific_relay() -> None:
+    config = APIConfig.from_values(
+        api_key="test-key",
+        base_url="https://api.openai.com/v1",
+        text_model=None,
+        image_model=None,
+        text_api=None,
+    )
+
+    assert config.text_model == "gpt-4.1-mini"
+    assert config.image_model == "gpt-image-1"
+    assert config.text_api == "chat_completions"
+
+
 @pytest.mark.parametrize(
     "url",
     [

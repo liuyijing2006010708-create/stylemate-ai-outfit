@@ -59,7 +59,7 @@ OCCASIONS = ["上班", "上课", "约会", "旅行", "聚会"]
 STYLES = ["韩系简约", "City Boy", "美式复古", "极简", "Old Money", "Y2K"]
 TEMPERATURES = ["炎热 ≥28°C", "温暖 20–27°C", "凉爽 10–19°C", "寒冷 0–9°C", "严寒 <0°C"]
 WEATHER = ["晴", "多云", "阴", "小雨", "大雨", "雪", "大风"]
-COMMUTES = ["短途步行", "步行较久（>20 分钟）", "主要在室内", "骑车 / 开车"]
+COMMUTES = ["短途步行", "步行较久（>20 分钟）", "主要在室内", "骑自行车 / 电动车", "开车"]
 BUDGETS = ["不限", "经济", "中等", "高端"]
 GENDERS = ["不提供", "女", "男", "非二元／其他"]
 AGE_GROUPS = ["不提供", "12 岁及以下", "13–17 岁", "18–24 岁", "25–34 岁",
@@ -67,10 +67,10 @@ AGE_GROUPS = ["不提供", "12 岁及以下", "13–17 岁", "18–24 岁", "25�
 
 # 中转站协议预设（第 10 项）：预设决定接口路径与协议，普通用户只需 Key 和模型。
 PRESET_OPENAI = "OpenAI 官方"
-PRESET_COMPATIBLE = "OpenAI 兼容站"
-PRESET_RIGHTAPI = "RightAPI 异步生图"
-PRESET_CUSTOM = "自定义"
-PRESET_LABELS = (PRESET_OPENAI, PRESET_COMPATIBLE, PRESET_RIGHTAPI, PRESET_CUSTOM)
+PRESET_COMPATIBLE = "通用 OpenAI 兼容接口"
+PRESET_RIGHTAPI = "RightAPI / RightCode（异步生图）"
+PRESET_CUSTOM = "高级自定义"
+PRESET_LABELS = (PRESET_COMPATIBLE, PRESET_OPENAI, PRESET_RIGHTAPI, PRESET_CUSTOM)
 PRESET_URLS = {
     PRESET_OPENAI: DEFAULT_BASE_URL,
     PRESET_RIGHTAPI: "https://rightapi.ai/codex/v1",
@@ -97,7 +97,7 @@ def init_state() -> None:
         "stage": "input" if environment_key else "api",
         "api_key": environment_key,
         "api_source": "environment" if environment_key else "",
-        "api_preset": None,
+        "api_preset": PRESET_COMPATIBLE,
         "api_return_stage": "input",
         "api_image_key": "",
         "image_enabled": True,
@@ -110,7 +110,7 @@ def init_state() -> None:
         "api_image_base_url": os.getenv("OPENAI_IMAGE_BASE_URL", ""),
         "api_text_model": os.getenv("OPENAI_TEXT_MODEL", DEFAULT_TEXT_MODEL),
         "api_image_model": os.getenv("OPENAI_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
-        "api_text_api": os.getenv("OPENAI_TEXT_API", "responses"),
+        "api_text_api": os.getenv("OPENAI_TEXT_API", "chat_completions"),
         "demo_access": False,
         "garment": None,
         "plan": None,
@@ -457,7 +457,7 @@ def render_api_setup() -> None:
             <div class="api-copy">
               <div class="eyebrow">首次使用</div>
               <h1>连接你的<br><em>AI 接口</em></h1>
-              <p>选择服务商预设后，协议和接口路径会自动填好；通常只需输入 Key（兼容站再填地址）和模型名。Key 只保存在当前应用会话中，不写入项目文件。</p>
+              <p>默认支持采用 OpenAI 协议的通用接口：填写服务商提供的 Key、Base URL 和模型名即可。特殊异步生图服务可选择对应适配器。Key 只保存在当前应用会话中，不写入项目文件。</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -474,7 +474,7 @@ def render_api_setup() -> None:
             PRESET_LABELS,
             index=preset_index,
             format_func=lambda label: label,
-            help="预设会自动填写协议与路径；特殊需求选“自定义”展开全部选项。",
+            help="默认选择通用兼容接口；官方接口或已支持的异步服务可使用预设。",
         )
         api_key_input = st.text_input(
             "API Key（官方或中转站）",
@@ -525,7 +525,7 @@ def render_api_setup() -> None:
                 "图片编辑模型", value=st.session_state.api_image_model,
                 help="填写所选生图服务商实际支持的模型名；不会随文本预设切换而覆盖。",
             )
-            if preset == PRESET_CUSTOM:
+            if preset in {PRESET_COMPATIBLE, PRESET_CUSTOM}:
                 protocol_options = ("responses", "chat_completions")
                 current_protocol = st.session_state.api_text_api
                 protocol_index = protocol_options.index(current_protocol) if current_protocol in protocol_options else 0
@@ -907,7 +907,8 @@ def render_confirm() -> None:
         with info_col:
             st.markdown(
                 '<div class="source-title">AI 识别</div>'
-                f'<div class="source-name">{html.escape(garment.display_name)}</div>'
+                f'<div class="source-name">{html.escape(garment.display_name)}</div>',
+                unsafe_allow_html=True,
             )
     st.markdown('<div class="source-rail"></div>', unsafe_allow_html=True)
 
@@ -1117,7 +1118,7 @@ def render_results() -> None:
                 <div class="look-head">
                   <span class="look-index">LOOK {index:02d}</span>
                   <span class="look-style">{style_name}</span>
-                  <span class="look-score">{outfit.compatibility_score}%</span>
+                  <span class="look-score">AI 推荐度 {outfit.compatibility_score}/100</span>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1206,7 +1207,7 @@ def render_results() -> None:
         for index, entry in enumerate(entries):
             st.markdown(f"**{entry['time']} · {html.escape(entry['label'])}**")
             lines = [
-                f"LOOK {order:02d} {look['style']}（{look['score']}%）："
+                f"LOOK {order:02d} {look['style']}（AI 推荐度 {look['score']}/100）："
                 + " + ".join(piece for piece in look["pieces"] if piece)
                 for order, look in enumerate(entry["looks"], start=1)
             ]

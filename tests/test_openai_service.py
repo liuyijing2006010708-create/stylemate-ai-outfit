@@ -198,6 +198,7 @@ def test_plan_prompt_carries_conditions_preferences_and_distinct_goals() -> None
         api_key="relay-key",
         base_url="https://relay.example.com/v1",
         text_model="relay-vision",
+        text_api="responses",
         client_factory=lambda **_: fake_client,
     )
     garment = GarmentAnalysis(
@@ -217,3 +218,4 @@ def test_plan_prompt_carries_conditions_preferences_and_distinct_goals() -> None
     instructions = str(captured["instructions"])
     assert "稳妥" in instructions and "进阶" in instructions and "突破" in instructions
     assert "面料、鞋子和外套" in instructions
+    assert "骑行" in instructions and "长外套" in instructions
