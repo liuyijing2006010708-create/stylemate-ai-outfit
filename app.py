@@ -68,7 +68,7 @@ AGE_GROUPS = ["不提供", "12 岁及以下", "13–17 岁", "18–24 岁", "25�
 # 中转站协议预设（第 10 项）：预设决定接口路径与协议，普通用户只需 Key 和模型。
 PRESET_OPENAI = "OpenAI 官方"
 PRESET_COMPATIBLE = "通用 OpenAI 兼容接口"
-PRESET_RIGHTAPI = "RightAPI / RightCode（异步生图）"
+PRESET_RIGHTAPI = "RightAPI（异步生图）"
 PRESET_CUSTOM = "高级自定义"
 PRESET_LABELS = (PRESET_COMPATIBLE, PRESET_OPENAI, PRESET_RIGHTAPI, PRESET_CUSTOM)
 PRESET_URLS = {

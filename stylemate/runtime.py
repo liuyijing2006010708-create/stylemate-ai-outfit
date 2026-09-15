@@ -27,8 +27,7 @@ DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_TEXT_MODEL = "gpt-4.1-mini"
 DEFAULT_IMAGE_MODEL = "gpt-image-1"
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
-# RightAPI 与 RightCode（right.codes）是同一家中转平台，共用同一套协议。
-RIGHTAPI_HOSTS = {"rightapi.ai", "www.rightapi.ai", "right.codes", "www.right.codes"}
+RIGHTAPI_HOSTS = {"rightapi.ai", "www.rightapi.ai"}
 
 
 class RunMode(str, Enum):
@@ -120,15 +119,13 @@ def provider_display_name(base_url: str) -> str:
         return "自定义中转站"
     if hostname in {"rightapi.ai", "www.rightapi.ai"}:
         return "RightAPI"
-    if hostname in {"right.codes", "www.right.codes"}:
-        return "RightCode"
     if hostname == "api.openai.com":
         return "OpenAI"
     return "兼容接口"
 
 
-def is_rightcode_host(hostname: str) -> bool:
-    """右 API / RightCode 共用一个平台，判断是否走其异步生图协议。"""
+def is_rightapi_host(hostname: str) -> bool:
+    """Return whether the endpoint uses RightAPI's asynchronous image protocol."""
 
     return hostname in RIGHTAPI_HOSTS
 
@@ -140,7 +137,7 @@ def image_generation_mode(base_url: str) -> str:
         hostname = urlsplit(normalize_base_url(base_url)).hostname or ""
     except ValueError:
         return "openai_edits"
-    if is_rightcode_host(hostname):
+    if is_rightapi_host(hostname):
         return "rightapi_async"
     return "openai_edits"
 

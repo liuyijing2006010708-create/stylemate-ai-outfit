@@ -2,6 +2,8 @@
 
 候选版本：`0.2.0-rc.1`。本文件区分候选代码、已发布状态与真人验收，不以模拟测试代替真实效果。
 
+> 本文是 P0-1 候选版本的历史发布记录。当前稳定版本与验证状态以 [`CHANGELOG.md`](CHANGELOG.md) 和 GitHub Actions 为准。
+
 ## 发布目标
 
 - 仓库：<https://github.com/liuyijing2006010708-create/stylemate-ai-outfit>
