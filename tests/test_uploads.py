@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from stylemate.rightapi_images import RightAPIError
 from stylemate.runtime import safe_connection_error
 from stylemate.uploads import InvalidImage, ensure_image_bytes, validate_upload
 
@@ -116,10 +115,10 @@ def test_provider_results_reject_corrupt_and_oversized_bytes():
 
 def test_locally_fixed_errors_pass_through_http_status_errors_do_not():
     assert safe_connection_error(InvalidImage("仅支持 JPG、PNG 或 WEBP 图片。")) == "仅支持 JPG、PNG 或 WEBP 图片。"
-    quota = RightAPIError("RightAPI 异步绘图任务失败，请检查模型权限或账户额度。")
-    assert safe_connection_error(quota) == str(quota)
-    http = RightAPIError("RightAPI 请求失败（HTTP 401）。", status_code=401)
+    http = RuntimeError("provider response must not be exposed")
+    http.status_code = 401  # type: ignore[attr-defined]
     assert "Key" in safe_connection_error(http)
+    assert "provider response" not in safe_connection_error(http)
 
 
 def test_spoofed_upload_never_reaches_the_provider(monkeypatch):

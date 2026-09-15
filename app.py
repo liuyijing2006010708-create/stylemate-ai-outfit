@@ -68,22 +68,18 @@ AGE_GROUPS = ["不提供", "12 岁及以下", "13–17 岁", "18–24 岁", "25�
 # 中转站协议预设（第 10 项）：预设决定接口路径与协议，普通用户只需 Key 和模型。
 PRESET_OPENAI = "OpenAI 官方"
 PRESET_COMPATIBLE = "通用 OpenAI 兼容接口"
-PRESET_RIGHTAPI = "RightAPI（异步生图）"
 PRESET_CUSTOM = "高级自定义"
-PRESET_LABELS = (PRESET_COMPATIBLE, PRESET_OPENAI, PRESET_RIGHTAPI, PRESET_CUSTOM)
+PRESET_LABELS = (PRESET_COMPATIBLE, PRESET_OPENAI, PRESET_CUSTOM)
 PRESET_URLS = {
     PRESET_OPENAI: DEFAULT_BASE_URL,
-    PRESET_RIGHTAPI: "https://rightapi.ai/codex/v1",
 }
 PRESET_PROTOCOLS = {
     PRESET_OPENAI: "responses",
-    PRESET_RIGHTAPI: "responses",
     PRESET_COMPATIBLE: "chat_completions",
 }
 PRESET_KEYS = {
     PRESET_OPENAI: "openai",
     PRESET_COMPATIBLE: "compatible",
-    PRESET_RIGHTAPI: "rightapi",
     PRESET_CUSTOM: "custom",
 }
 
@@ -102,7 +98,6 @@ def init_state() -> None:
         "api_image_key": "",
         "image_enabled": True,
         "session_id": uuid.uuid4().hex,
-        "image_tasks": {},
         "image_errors": {},
         "batch_config": None,
         "batch_id": "",
@@ -195,7 +190,7 @@ def header(show_reset: bool = False, show_api_settings: bool = True) -> None:
             st.markdown(f'<div class="api-state"><strong>✦</strong> {status}</div>', unsafe_allow_html=True)
     st.markdown('<div style="border-bottom:1px solid #dfe2e8;margin:.85rem 0 1.7rem"></div>', unsafe_allow_html=True)
     if st.session_state.stage == "input" and st.session_state.plan:
-        if st.button("继续上次搭配", help="保留原文字、图片与异步任务，不重新调用 API。"):
+        if st.button("继续上次搭配", help="保留原文字与图片，不重新调用 API。"):
             st.session_state.stage = "results"
             st.rerun()
 
@@ -240,39 +235,26 @@ def service(config):
 
 
 def generate_one(ai, outfit) -> None:
-    state = st.session_state.image_tasks.setdefault(outfit.id, {})
-    progress = st.empty()
-    labels = {"submitting": "正在提交", "queued": "排队中", "pending": "排队中",
-              "running": "生成中", "processing": "生成中", "in_progress": "生成中",
-              "downloading": "下载中", "completed": "完成", "timeout": "等待超时",
-              "query_error": "查询暂时失败", "unknown": "提交结果待确认"}
     request_id = new_request_id()
-    state["request_id"] = request_id
     try:
         with trace(request_id, "image", model=getattr(ai, "image_model", ""),
                    protocol=getattr(ai, "image_generation_mode", "")):
             result = ai.generate_outfit_image(
                 st.session_state.source_image, st.session_state.source_mime,
-                st.session_state.garment, outfit, task_state=state,
-                on_progress=lambda item: progress.caption(labels.get(item["status"], "任务结束")),
+                st.session_state.garment, outfit,
             )
         st.session_state.result_images[outfit.id] = result
-        state["status"] = "completed"
         st.session_state.image_errors.pop(outfit.id, None)
         refresh_history_latest()
         # 已收藏的 LOOK 后续生成图片时，收藏条目同步补图。
         saved = st.session_state.saved_details.get(look_key(outfit.id))
         if saved is not None:
             saved["image"] = result
-        log_event(request_id, "image", "task_saved", status="completed",
-                  retries=state.get("query_errors", 0))
+        log_event(request_id, "image", "task_saved", status="completed", retries=0)
     except Exception as exc:
         message = safe_connection_error(exc)
         st.session_state.image_errors[outfit.id] = f"{message}（请求编号 {request_id}）"
-        if not state.get("status"):
-            state["status"] = "unknown"
-        log_event(request_id, "image", "task_stopped", status=state.get("status", ""),
-                  retries=state.get("query_errors", 0))
+        log_event(request_id, "image", "task_stopped", status="failed", retries=0)
 
 
 def start_analysis(image_bytes: bytes | None, occasion: str, preferred_style: str,
@@ -308,7 +290,7 @@ def _start_analysis(image_bytes: bytes | None, occasion: str, preferred_style: s
         stage="confirm", pending_garment=garment, pending_source=source,
         pending_mime=source_mime, confirm_occasion=occasion,
         confirm_style=preferred_style, confirm_conditions=conditions,
-        last_request_id=request_id, image_tasks={}, image_errors={},
+        last_request_id=request_id, image_errors={},
     )
 
 
@@ -411,7 +393,7 @@ def _run_plan(garment: GarmentAnalysis, generate_images: bool) -> None:
             source_mime=st.session_state.pending_mime,
             occasion=st.session_state.confirm_occasion,
             preferred_style=st.session_state.confirm_style,
-            recognition_demo=False, result_images_demo=False, image_tasks={},
+            recognition_demo=False, result_images_demo=False,
             image_errors={}, batch_config=config, batch_id=uuid.uuid4().hex,
             pending_garment=None,
             pending_source=None, last_request_id=request_id)
@@ -442,7 +424,7 @@ def run_demo(occasion: str, preferred_style: str) -> None:
         preferred_style=preferred_style,
         recognition_demo=True,
         result_images_demo=True,
-        image_tasks={}, image_errors={}, batch_config=None, batch_id=uuid.uuid4().hex,
+        image_errors={}, batch_config=None, batch_id=uuid.uuid4().hex,
     )
     record_history(f"{garment.display_name} · {occasion} · {preferred_style}", plan)
     st.rerun()
@@ -457,7 +439,7 @@ def render_api_setup() -> None:
             <div class="api-copy">
               <div class="eyebrow">首次使用</div>
               <h1>连接你的<br><em>AI 接口</em></h1>
-              <p>默认支持采用 OpenAI 协议的通用接口：填写服务商提供的 Key、Base URL 和模型名即可。特殊异步生图服务可选择对应适配器。Key 只保存在当前应用会话中，不写入项目文件。</p>
+              <p>默认支持采用 OpenAI 协议的通用接口：填写服务商提供的 Key、Base URL 和模型名即可。文本与生图接口可以分别配置。Key 只保存在当前应用会话中，不写入项目文件。</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -474,7 +456,7 @@ def render_api_setup() -> None:
             PRESET_LABELS,
             index=preset_index,
             format_func=lambda label: label,
-            help="默认选择通用兼容接口；官方接口或已支持的异步服务可使用预设。",
+            help="默认选择通用兼容接口；使用 OpenAI 官方接口时可选择官方预设。",
         )
         api_key_input = st.text_input(
             "API Key（官方或中转站）",
@@ -494,12 +476,6 @@ def render_api_setup() -> None:
                 help="通常需要以 /v1 结尾；公网中转站必须使用 HTTPS。",
             )
             effective_base = base_url_input
-        if preset == PRESET_RIGHTAPI:
-            st.info(
-                "已选择 RightAPI：保存时自动使用文本渠道地址 "
-                "`https://rightapi.ai/codex/v1`。生成真实平铺图时，程序会自动调用 "
-                "RightAPI 的异步绘图接口并等待任务完成。"
-            )
         advanced_open = preset == PRESET_CUSTOM
         with st.expander("高级选项（模型与生图接口）", expanded=advanced_open):
             text_model_input = st.text_input(
@@ -640,7 +616,6 @@ def render_api_setup() -> None:
                 st.session_state.api_key = ""
                 st.session_state.api_image_key = ""
                 st.session_state.batch_config = None
-                st.session_state.image_tasks = {}
                 st.session_state.image_errors = {}
                 st.session_state.plan = None
                 st.session_state.text_key_input = ""
@@ -1016,7 +991,6 @@ def _replace_look(old) -> None:
     )
     # 旧图与任务状态随旧 LOOK 一起清理；新 LOOK 的效果图由用户单独发起，避免额外费用
     st.session_state.result_images.pop(old.id, None)
-    st.session_state.image_tasks.pop(old.id, None)
     st.session_state.image_errors.pop(old.id, None)
     refresh_history_latest()
 
@@ -1130,30 +1104,20 @@ def render_results() -> None:
             elif not st.session_state.recognition_demo and not st.session_state.image_enabled:
                 st.info("生图已关闭；如需效果图，请先在 API 设置中启用生图。")
             elif not st.session_state.recognition_demo:
-                task = st.session_state.image_tasks.get(outfit.id, {})
                 error = st.session_state.image_errors.get(outfit.id)
                 if error:
                     st.warning(error)
                 else:
                     st.info("这张图还未生成；可单独生成，不影响其他两套结果。")
-                task_id = task.get("task_id")
-                if task_id:
-                    st.caption(f"任务编号：{task_id}")
-                terminal = task.get("status") in {"failed", "cancelled", "canceled", "error"}
-                needs_new = terminal or (not task_id and task.get("status") in {"unknown", "submitting"})
-                confirmed = not needs_new or st.checkbox("确认重新提交这张图（可能再次计费；请先核对服务商后台）", key=f"confirm-{outfit.id}")
-                if task_id and not terminal:
-                    label = "继续查询这张图"
-                elif task:
-                    label = "重试这张图"
-                else:
-                    label = "生成这张效果图（1 次生图调用）"
+                confirmed = not error or st.checkbox(
+                    "确认重试这张图（可能再次计费；请先核对服务商后台）",
+                    key=f"confirm-{outfit.id}",
+                )
+                label = "重试这张图" if error else "生成这张效果图（1 次生图调用）"
                 if st.button(label, key=f"retry-image-{outfit.id}", disabled=not confirmed):
                     try:
                         config = st.session_state.batch_config
                         with GATE.claim(st.session_state.session_id, config.image_api_key, scope="image"), service(config) as ai:
-                            if needs_new:
-                                st.session_state.image_tasks[outfit.id] = {}
                             generate_one(ai, outfit)
                         st.rerun()
                     except Exception as exc:
@@ -1227,7 +1191,7 @@ def clear_session_data() -> None:
     for key in list(st.session_state):
         if key.startswith(("pref", "confirm_", "cond_", "crop_")) or key in {
             "garment", "plan", "pending_garment", "pending_source", "pending_mime",
-            "source_image", "source_mime", "result_images", "image_tasks", "image_errors",
+            "source_image", "source_mime", "result_images", "image_errors",
             "history", "saved", "saved_details", "liked", "batch_id", "batch_config",
             "rotate_deg", "bg_removed", "photo-upload", "sel_occasion", "sel_style",
             "occ_widget", "style_widget", "temp_widget", "weather_widget", "commute_widget",

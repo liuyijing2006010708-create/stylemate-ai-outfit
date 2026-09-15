@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 from .models import GarmentAnalysis, Outfit, OutfitPlan
 from .consistency import build_image_prompt
-from .rightapi_images import RightAPIImageClient
 from .security import secure_http_client, protect_provider_logs
 from .uploads import ensure_image_bytes
 from .runtime import (
@@ -18,7 +17,6 @@ from .runtime import (
     DEFAULT_BASE_URL,
     DEFAULT_IMAGE_MODEL,
     DEFAULT_TEXT_MODEL,
-    image_generation_mode,
 )
 
 
@@ -37,7 +35,6 @@ class StyleMateAI:
         image_model: str | None = None,
         text_api: str | None = None,
         client_factory: Callable[..., Any] = OpenAI,
-        rightapi_image_factory: Callable[..., Any] = RightAPIImageClient,
     ) -> None:
         config = APIConfig.from_values(
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
@@ -70,12 +67,7 @@ class StyleMateAI:
         self.text_model = config.text_model
         self.image_model = config.image_model
         self.text_api = config.text_api
-        self.image_generation_mode = image_generation_mode(config.image_base_url)
-        self.rightapi_images = (
-            rightapi_image_factory(api_key=config.image_api_key, model=config.image_model)
-            if self.image_generation_mode == "rightapi_async"
-            else None
-        )
+        self.image_generation_mode = "openai_edits"
 
     def close(self):
         self.client.close()
@@ -279,9 +271,6 @@ class StyleMateAI:
         mime_type: str,
         garment: GarmentAnalysis,
         outfit: Outfit,
-        *,
-        task_state: dict | None = None,
-        on_progress: Callable | None = None,
     ) -> bytes:
         extension = mime_type.split("/")[-1].replace("jpeg", "jpg")
         image_file = io.BytesIO(image_bytes)
@@ -289,12 +278,6 @@ class StyleMateAI:
         # Same structured fields the results page renders, so the image
         # cannot drift from the text plan.
         prompt = build_image_prompt(garment, outfit)
-        if self.rightapi_images is not None:
-            if task_state is not None:
-                return self.rightapi_images.generate(image_bytes, mime_type, prompt,
-                                                     task_state=task_state, on_progress=on_progress)
-            return self.rightapi_images.generate(image_bytes, mime_type, prompt)
-
         result = self.image_client.images.edit(
             model=self.image_model,
             image=image_file,
