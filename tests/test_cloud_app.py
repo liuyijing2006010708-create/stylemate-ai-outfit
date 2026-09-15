@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_release_identifier_visible_without_api_key():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
     assert not app.exception
-    assert any("版本 0.3.1" in item.value for item in app.caption)
+    assert any("版本 0.4.0" in item.value for item in app.caption)
 
 
 def test_first_visit_defaults_to_generic_openai_compatible_provider():
@@ -51,7 +51,6 @@ def test_partial_image_failure_preserves_other_results_and_retry_only_one(monkey
         def generate_outfit_image(self, source, mime, garment_arg, outfit, **kwargs):
             calls.append(outfit.id)
             if outfit.id == failed_id and calls.count(failed_id) == 1:
-                kwargs["task_state"].update(task_id="saved_task", status="timeout")
                 raise TimeoutError("secret provider payload")
             return DEMO_GARMENT_IMAGE.read_bytes()
 
@@ -71,9 +70,11 @@ if st.session_state.plan is None:
     app = AppTest.from_string(script).run()
     assert not app.exception
     assert len(app.session_state["result_images"]) == 2
-    assert app.session_state["image_tasks"][failed_id]["task_id"] == "saved_task"
     assert "secret" not in str(app.session_state["image_errors"])
     assert len(calls) == 3
+    retry = next(button for button in app.button if button.key == f"retry-image-{failed_id}")
+    assert retry.disabled
+    next(box for box in app.checkbox if box.key == f"confirm-{failed_id}").check().run()
     retry = next(button for button in app.button if button.key == f"retry-image-{failed_id}")
     retry.click().run()
     assert not app.exception
@@ -112,16 +113,11 @@ def test_app_startup_uses_environment_key_for_private_use(monkeypatch):
     assert app.session_state["api_key"] == "personal-key"
 
 
-def test_rightapi_preset_fills_protocol_and_path():
+def test_provider_presets_only_offer_generic_official_and_custom_options():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
-    next(x for x in app.text_input if x.label == "API Key（官方或中转站）").set_value("relay-key")
-    next(x for x in app.selectbox if x.label == "服务商预设").set_value("RightAPI（异步生图）")
-    app.run()
-    next(x for x in app.button if x.label == "保存并开始使用").click().run()
-    assert not app.exception
-    assert app.session_state["api_base_url"] == "https://rightapi.ai/codex/v1"
-    assert app.session_state["api_text_api"] == "responses"
-    assert app.session_state["stage"] == "input"
+    preset = next(x for x in app.selectbox if x.label == "服务商预设")
+
+    assert preset.options == ["通用 OpenAI 兼容接口", "OpenAI 官方", "高级自定义"]
 
 
 def test_confirm_page_renders_editable_fields(monkeypatch):

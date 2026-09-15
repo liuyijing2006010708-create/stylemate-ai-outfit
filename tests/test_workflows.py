@@ -76,17 +76,15 @@ def test_text_only_configuration_has_no_image_action(workflow):
     assert not any(b.key and b.key.startswith("retry-image-") for b in app.button)
 
 
-def test_api_settings_return_keeps_existing_batch_and_tasks(workflow):
+def test_api_settings_return_keeps_existing_batch(workflow):
     app, _ = workflow
     batch_id = app.session_state["batch_id"]
-    app.session_state["image_tasks"] = {"look-01": {"task_id": "pending-task", "status": "timeout"}}
     next(b for b in app.button if b.label == "⚙ API 设置").click().run()
     next(b for b in app.button if b.label == "返回应用").click().run()
     assert not app.exception
     assert app.session_state["stage"] == "results"
     assert app.session_state["batch_id"] == batch_id
-    assert app.session_state["image_tasks"]["look-01"]["task_id"] == "pending-task"
-    assert any(b.label == "继续查询这张图" for b in app.button)
+    assert any(b.label == "生成这张效果图（1 次生图调用）" for b in app.button)
 
 
 def test_input_can_resume_previous_results(workflow):

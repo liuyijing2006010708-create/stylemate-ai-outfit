@@ -9,7 +9,6 @@ from stylemate.runtime import (
     normalize_base_url,
     provider_display_name,
     safe_connection_error,
-    image_generation_mode,
     verify_api_key,
 )
 
@@ -79,7 +78,6 @@ def test_unknown_provider_uses_generic_display_name() -> None:
 
     assert normalize_base_url(base_url) == base_url
     assert provider_display_name(base_url) == "兼容接口"
-    assert image_generation_mode(base_url) == "openai_edits"
 
 
 def test_default_models_are_not_tied_to_a_specific_relay() -> None:
@@ -113,28 +111,6 @@ def test_relay_base_url_rejects_unsafe_values(url: str) -> None:
 def test_local_http_relay_is_rejected() -> None:
     with pytest.raises(ValueError):
         normalize_base_url("http://localhost:4000/v1/")
-
-
-@pytest.mark.parametrize(
-    "entered",
-    [
-        "https://rightapi.ai/v1",
-        "https://www.rightapi.ai/v1/",
-        "https://rightapi.ai/codex",
-    ],
-)
-def test_rightapi_text_base_url_is_corrected_to_codex_channel(entered: str) -> None:
-    config = APIConfig.from_values(
-        api_key="relay-key",
-        base_url=entered,
-        text_model="gpt-5.6-luna",
-        image_model="gpt-image-2",
-        text_api="responses",
-    )
-
-    assert config.base_url.endswith("rightapi.ai/codex/v1")
-    assert provider_display_name(config.base_url) == "RightAPI"
-    assert image_generation_mode(config.base_url) == "rightapi_async"
 
 
 @pytest.mark.parametrize(

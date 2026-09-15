@@ -184,7 +184,7 @@ def test_trace_logs_safe_fields_only(caplog):
         with trace(request_id, "analyze", model="gpt-x", protocol="responses", api_key="sk-secret"):
             pass
         with pytest.raises(RuntimeError):
-            with trace(request_id, "image", model="img", protocol="rightapi_async"):
+            with trace(request_id, "image", model="img", protocol="openai_edits"):
                 raise RuntimeError("provider said: sk-secret leaked")
     assert "req=" in caplog.text and "event=done" in caplog.text
     assert "event=failed" in caplog.text

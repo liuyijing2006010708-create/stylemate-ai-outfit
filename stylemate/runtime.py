@@ -11,7 +11,6 @@ from urllib.parse import urlsplit, urlunsplit
 from .consistency import PlanRejected
 from .security import UnsafeURL, validate_url, resolve_public, secure_http_client, protect_provider_logs
 from .operations import BusyError
-from .rightapi_images import RightAPIError
 from .uploads import InvalidImage
 
 from openai import (
@@ -27,7 +26,6 @@ DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_TEXT_MODEL = "gpt-4.1-mini"
 DEFAULT_IMAGE_MODEL = "gpt-image-1"
 MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
-RIGHTAPI_HOSTS = {"rightapi.ai", "www.rightapi.ai"}
 
 
 class RunMode(str, Enum):
@@ -107,8 +105,6 @@ def normalize_base_url(value: str | None) -> str:
     if parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback):
         raise ValueError("中转站必须使用 HTTPS；仅本机 localhost 可使用 HTTP。")
     path = parsed.path.rstrip("/")
-    if hostname in RIGHTAPI_HOSTS and path in {"", "/v1", "/codex"}:
-        path = "/codex/v1"
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
@@ -117,29 +113,9 @@ def provider_display_name(base_url: str) -> str:
         hostname = urlsplit(normalize_base_url(base_url)).hostname or ""
     except ValueError:
         return "自定义中转站"
-    if hostname in {"rightapi.ai", "www.rightapi.ai"}:
-        return "RightAPI"
     if hostname == "api.openai.com":
         return "OpenAI"
     return "兼容接口"
-
-
-def is_rightapi_host(hostname: str) -> bool:
-    """Return whether the endpoint uses RightAPI's asynchronous image protocol."""
-
-    return hostname in RIGHTAPI_HOSTS
-
-
-def image_generation_mode(base_url: str) -> str:
-    """Return the image protocol selected for a configured provider."""
-
-    try:
-        hostname = urlsplit(normalize_base_url(base_url)).hostname or ""
-    except ValueError:
-        return "openai_edits"
-    if is_rightapi_host(hostname):
-        return "rightapi_async"
-    return "openai_edits"
 
 
 def guess_preset(base_url: str) -> str:
@@ -149,8 +125,6 @@ def guess_preset(base_url: str) -> str:
         hostname = urlsplit(normalize_base_url(base_url)).hostname or ""
     except ValueError:
         return "custom"
-    if hostname in RIGHTAPI_HOSTS:
-        return "rightapi"
     if hostname == "api.openai.com":
         return "openai"
     return "custom"
@@ -174,7 +148,7 @@ def safe_connection_error(error: Exception) -> str:
         if cause is None:
             break
     if isinstance(error, TimeoutError):
-        return "等待超时；已提交的图片任务可继续查询，不会重复提交。"
+        return "等待超时，提交结果可能未知；请先核对服务商记录，再决定是否重试。"
     # Only fixed machine codes are compared; response bodies are never shown.
     body = getattr(error, "body", None)
     code = body.get("code") if isinstance(body, dict) else None
@@ -193,13 +167,13 @@ def safe_connection_error(error: Exception) -> str:
     if status_code == 404:
         return "接口不存在：请检查 API Base URL 是否包含正确的渠道路径和 /v1。"
     if status_code == 408:
-        return "服务商响应超时，请稍后重试；已提交的图片任务可继续查询。"
+        return "服务商响应超时，提交结果可能未知；请先核对服务商记录，再决定是否重试。"
     if status_code == 429:
         return "请求被限流或额度已用完，请稍后重试并检查账户额度。"
     if isinstance(status_code, int) and status_code >= 500:
         return "中转站或其上游服务暂时异常，请稍后重试。"
     # These classes only ever carry fixed, locally written messages.
-    if isinstance(error, (InvalidImage, RightAPIError, PlanRejected)):
+    if isinstance(error, (InvalidImage, PlanRejected)):
         return str(error)
     if error.__class__.__name__ in {"APIConnectionError", "APITimeoutError"}:
         return "无法连接中转站，请检查网络、域名和 HTTPS 证书。"
@@ -277,8 +251,6 @@ def verify_api_key(
 
 def verify_image_endpoint(config: APIConfig) -> str:
     """Metadata is optional and is explicitly not an image generation test."""
-    if image_generation_mode(config.image_base_url) == "rightapi_async":
-        return "已识别异步协议；实际生图待验证（不创建收费任务）。"
     with OpenAI(api_key=config.image_api_key, base_url=config.image_base_url,
                 http_client=secure_http_client(timeout=15.0), max_retries=0) as client:
         try:
