@@ -10,7 +10,6 @@ StyleMate 的主要集成边界是协议，而不是服务商品牌。文本接�
 | 搭配规划 | Responses API 或 Chat Completions | 返回内容需要满足 Pydantic 结构化模型 |
 | 单套替换 | Responses API 或 Chat Completions | 与搭配规划使用同一文本协议 |
 | 平铺图 | OpenAI-compatible Image Edits | 调用配置端点下的图片编辑能力 |
-| 异步平铺图 | RightAPI 专用异步适配器 | 提交任务、轮询状态并验证返回图片 |
 
 ## OpenAI
 
@@ -47,14 +46,6 @@ OPENAI_TEXT_API=chat_completions
 - 文本与生图使用不同网关时，分别设置 Base URL；需要不同凭据时在页面启用独立生图 Key。
 
 “支持 OpenAI-compatible”不表示所有第三方服务的所有模型都已逐一验证。具体模型、请求限制、数据保留和费用由对应服务商决定。
-
-## RightAPI 异步图片适配
-
-仓库保留 RightAPI 的专用适配器，因为它的图片流程不是普通的同步 Image Edits：程序会提交异步任务、保存任务编号、轮询状态，再下载和校验结果。文本接口仍按 Responses API 兼容路径调用。
-
-页面选择 **RightAPI（异步生图）** 后会填入其文本渠道 Base URL，并在生图阶段自动使用异步适配器。超时且已有任务编号时应继续查询原任务，不要直接重新提交，以免产生重复任务或费用。
-
-该适配只覆盖源码和测试中明确实现的协议，不代表对其他第三方服务的隐式支持。
 
 ## 验证边界
 

@@ -16,7 +16,7 @@ cp .env.example .env
 | `OPENAI_BASE_URL` | 否 | `https://api.openai.com/v1` | 文本接口 Base URL |
 | `OPENAI_IMAGE_BASE_URL` | 否 | 空 | 生图 Base URL；为空时复用文本 Base URL |
 | `OPENAI_TEXT_MODEL` | 否 | `gpt-4.1-mini` | 视觉识别和搭配规划模型 |
-| `OPENAI_IMAGE_MODEL` | 否 | `gpt-image-1` | 图片编辑或异步生图模型 |
+| `OPENAI_IMAGE_MODEL` | 否 | `gpt-image-1` | 图片编辑模型 |
 | `OPENAI_TEXT_API` | 否 | `chat_completions` | `chat_completions` 或 `responses` |
 
 `.env` 已被 `.gitignore` 忽略。不要把真实 Key 写入 `.env.example`、源码、Issue、Pull Request 或截图。
@@ -27,7 +27,6 @@ cp .env.example .env
 
 - OpenAI 官方预设。
 - 通用 OpenAI-compatible endpoint。
-- 已实现专用协议适配的 RightAPI 异步生图预设。
 - 高级自定义配置。
 
 通用与高级配置允许分别设置文本和生图 Base URL、模型和 API Key。生图 Key 留空时复用文本 Key；生图 Base URL 留空时复用文本 Base URL。
@@ -38,7 +37,7 @@ cp .env.example .env
 
 本地入口 `app.py` 的初始值来自环境变量，之后以当前页面会话保存的配置为准。公开入口 `cloud_app.py` 不读取服务器的 `OPENAI_API_KEY`，但仍使用非敏感环境变量作为初始 Base URL、模型和协议值。
 
-每个已开始的搭配批次保存当时的 API 配置，用于异步任务续查；之后修改页面配置不会把新 Key 用于旧任务。
+每个已开始的搭配批次保存当时的 API 配置，用于后续逐张生成图片；之后修改页面配置不会把新 Key 用于旧批次。
 
 ## 地址与连接检查
 
@@ -62,7 +61,7 @@ cp .env.example .env
 
 ### 文本成功但生图失败
 
-文本和图片是独立能力。确认生图 Base URL、图片模型和 Key 均正确，并确认服务实现兼容的图片编辑接口或项目中已有的专用异步适配器。更多要求见 [Provider 指南](providers.md)。
+文本和图片是独立能力。确认生图 Base URL、图片模型和 Key 均正确，并确认服务实现兼容的图片编辑接口。更多要求见 [Provider 指南](providers.md)。
 
 ### 公开部署没有读取服务器 Key
 

@@ -6,7 +6,7 @@
 [![Streamlit 1.63.0](https://img.shields.io/badge/Streamlit-1.63.0-FF4B4B?logo=streamlit&logoColor=white)](requirements.txt)
 [![CI](https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/actions/workflows/ci.yml/badge.svg)](https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version 0.3.1](https://img.shields.io/badge/version-0.3.1-1248F5.svg)](CHANGELOG.md)
+[![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-1248F5.svg)](CHANGELOG.md)
 
 [在线体验](https://stylemate-ai-outfit.streamlit.app/) · [快速开始](#快速开始) · [项目文档](#项目文档) · [版本记录](CHANGELOG.md)
 
@@ -45,7 +45,7 @@ StyleMate 面向“已经有一件衣服，但不知道如何搭配”的场景�
 - 文本清单与生图提示词来自同一份结构化数据；平铺图默认按需逐张生成。
 - 支持 OpenAI 及 OpenAI-compatible API endpoints，并允许文本与生图分别配置 Base URL、模型和 API Key。
 - 保留最近 4 批会话历史和最多 20 套收藏，可导出图片与文字清单。
-- 提供固定 Demo、错误分类、请求编号、调用限流、异步任务续查和移动端布局。
+- 提供固定 Demo、错误分类、请求编号、调用限流、失败重试和移动端布局。
 
 完整的数据流、模块边界和安全设计见[架构说明](docs/architecture.md)。
 

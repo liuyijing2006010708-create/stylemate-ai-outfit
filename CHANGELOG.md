@@ -6,6 +6,17 @@
 
 暂无已记录变更。
 
+## [0.4.0] - 2026-09-15
+
+### Changed
+
+- 服务商预设仅保留 OpenAI、通用 OpenAI-compatible endpoint 和高级自定义配置。
+- 所有第三方兼容服务统一通过用户填写的 Base URL、模型和 API Key 接入。
+
+### Removed
+
+- 移除开发阶段临时接入的第三方中转服务名称、硬编码地址、专用异步图片适配器及对应测试和文档。
+
 ## [0.3.1] - 2026-09-15
 
 ### Added
@@ -53,7 +64,8 @@
 
 - 完成 P0-1 发布候选验收，并通过 GitHub Actions 回归与依赖审计。
 
-[Unreleased]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/releases/tag/v0.3.0
 [0.2.0-rc.1]: https://github.com/liuyijing2006010708-create/stylemate-ai-outfit/releases/tag/v0.2.0-rc.1

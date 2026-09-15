@@ -1,6 +1,6 @@
 # 部署到 Streamlit Community Cloud
 
-StyleMate 的公开部署入口是 `cloud_app.py`。它复用本地应用的文本 API、生图 API 和异步任务流程，但不会把服务器环境中的 `OPENAI_API_KEY` 提供给访客。每位访客需要在自己的 Streamlit 会话中配置 API Key；无需在 Community Cloud Secrets 中放入维护者的个人 Key。
+StyleMate 的公开部署入口是 `cloud_app.py`。它复用本地应用的文本 API 和生图 API 流程，但不会把服务器环境中的 `OPENAI_API_KEY` 提供给访客。每位访客需要在自己的 Streamlit 会话中配置 API Key；无需在 Community Cloud Secrets 中放入维护者的个人 Key。
 
 ## 部署前准备
 
@@ -52,7 +52,7 @@ Community Cloud 会跟随所选分支重新部署。建议仅通过受保护的 
 - 请求日志只保留请求编号、阶段、模型、协议、状态和耗时等固定字段，不记录 Key、图片、提示词或服务商响应正文。
 - 单进程限流只适合当前 Streamlit 部署规模；多实例部署需要改为共享限流存储。
 - 上传图片在发送前完成格式、大小、像素和解码检查，并重新编码以移除 EXIF / GPS 等元数据。
-- 异步任务会立即写入当前会话；超时后可继续查询原任务，但刷新或服务重启仍可能丢失任务状态。
+- 生图状态保存在当前会话；刷新或服务重启可能丢失尚未下载的结果。
 - 第三方服务商会接触用户主动提交的 Key、图片和提示词，用户应自行核对其隐私政策、数据保留和计费规则。
 
 详细 API 配置见 [`docs/configuration.md`](docs/configuration.md)，协议支持见 [`docs/providers.md`](docs/providers.md)，安全报告方式见 [`SECURITY.md`](SECURITY.md)。
