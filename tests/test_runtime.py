@@ -75,7 +75,11 @@ def test_relay_config_normalizes_base_url_and_models() -> None:
 
 
 def test_unknown_provider_uses_generic_display_name() -> None:
-    assert provider_display_name("https://relay.example.com/v1") == "兼容接口"
+    base_url = "https://relay.example.com/v1"
+
+    assert normalize_base_url(base_url) == base_url
+    assert provider_display_name(base_url) == "兼容接口"
+    assert image_generation_mode(base_url) == "openai_edits"
 
 
 def test_default_models_are_not_tied_to_a_specific_relay() -> None:
@@ -130,28 +134,6 @@ def test_rightapi_text_base_url_is_corrected_to_codex_channel(entered: str) -> N
 
     assert config.base_url.endswith("rightapi.ai/codex/v1")
     assert provider_display_name(config.base_url) == "RightAPI"
-    assert image_generation_mode(config.base_url) == "rightapi_async"
-
-
-@pytest.mark.parametrize(
-    "entered",
-    [
-        "https://right.codes/v1",
-        "https://www.right.codes/v1/",
-        "https://www.right.codes/codex",
-    ],
-)
-def test_rightcode_base_url_is_recognized_and_routed_to_async_draw(entered: str) -> None:
-    config = APIConfig.from_values(
-        api_key="sk-rightcode-demo",
-        base_url=entered,
-        text_model="gpt-5.6-luna",
-        image_model="gpt-image-2",
-        text_api="responses",
-    )
-
-    assert config.base_url.endswith("right.codes/codex/v1")
-    assert provider_display_name(config.base_url) == "RightCode"
     assert image_generation_mode(config.base_url) == "rightapi_async"
 
 

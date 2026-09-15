@@ -115,7 +115,7 @@ def test_app_startup_uses_environment_key_for_private_use(monkeypatch):
 def test_rightapi_preset_fills_protocol_and_path():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
     next(x for x in app.text_input if x.label == "API Key（官方或中转站）").set_value("relay-key")
-    next(x for x in app.selectbox if x.label == "服务商预设").set_value("RightAPI / RightCode（异步生图）")
+    next(x for x in app.selectbox if x.label == "服务商预设").set_value("RightAPI（异步生图）")
     app.run()
     next(x for x in app.button if x.label == "保存并开始使用").click().run()
     assert not app.exception
