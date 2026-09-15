@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_release_identifier_visible_without_api_key():
     app = AppTest.from_file(str(ROOT / "cloud_app.py")).run()
     assert not app.exception
-    assert any("版本 0.3.0" in item.value for item in app.caption)
+    assert any("版本 0.3.1" in item.value for item in app.caption)
 
 
 def test_first_visit_defaults_to_generic_openai_compatible_provider():
